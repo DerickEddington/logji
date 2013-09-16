@@ -8,7 +8,8 @@
     constants
     variable?
     instance?
-    instance-of-any?)
+    instance-of-any?
+    permute)
   (import
     (rnrs base)
     (rnrs lists)
@@ -69,4 +70,13 @@
   (find (lambda (e) (instance? expr e))
         expr-list))
 
+
+(define (permute l)
+  (cond ((null? l) '())
+        ((null? (cdr l)) (map list (car l)))
+        (else (let ((p (permute (cdr l))))
+                (apply append (map (lambda (a) (map (lambda (r) (cons a r)) p))
+                                   (car l)))))))
+
+  
 )

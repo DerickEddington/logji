@@ -2,15 +2,19 @@
 ;; Copyright 2013 Derick Eddington.  My MIT-style license is in the file named
 ;; LICENSE from the original collection this file is distributed with.
 
-; TODO: Consistency Rule in someway.
+; TODO: "if" operator
 
 (library (logji boolean)
   (export
     theorems
     anti-theorems
-    classify/basic
     prove
+    proof
+    add-law!
+    classify/known
+    classify/consistency
     completion
+    classify
     law
     transparency)
   (import
@@ -19,9 +23,8 @@
     (srfi :39 parameters)
     (logji base))
 
-; TODO: The remaining operators and axioms.
 
-(define (operator? x) (memq x '(¬ ∧ ∨ ⇒ = ≠)))
+(define (operator? x) (memq x '(¬ ∧ ∨ ⇒ ⇐ = ≠)))
 (define (symmetric-operator? x) (memq x '(∧ ∨ = ≠)))
 
 (define axioms
@@ -32,6 +35,8 @@
     (∨ x ⊤)
     (⇒ ⊥ x)
     (⇒ x ⊤)
+    (⇐ x ⊥)
+    (⇐ ⊤ x)
     (= x x)
     (≠ ⊤ ⊥)
     (≠ ⊥ ⊤)))
@@ -43,6 +48,7 @@
     (∧ x ⊥)
     (∨ ⊥ ⊥)
     (⇒ ⊤ ⊥)
+    (⇐ ⊥ ⊤)
     (= ⊤ ⊥)
     (= ⊥ ⊤)
     (≠ x x)))
@@ -51,9 +57,9 @@
 (define anti-theorems (make-parameter anti-axioms))
 
 
-;;;; Classification of Expressions According to Established Theorems
+;;;; Classification according to known theorems
 
-(define (classify/basic expr)
+(define (classify/known expr)
   (cond
     ;;;; Axiom/Proven/Instance Rule
     ((instance-of-any? expr (theorems))
@@ -64,45 +70,51 @@
     ((and (list? expr) (<= 2 (length expr)))
      (let* ((operator (car expr))
             (operands (cdr expr))
-            (operands-classifications (map classify/basic operands)))
+            (operands-classifications (map classify/known operands)))
        (and (not (equal? operands operands-classifications))
             (for-all (lambda (x) x) operands-classifications)
-            (classify/basic `(,operator ,@operands-classifications)))))
+            (classify/known `(,operator ,@operands-classifications)))))
     ; Unclassified
     (else #F)))
 
 
-;;;; Proving
+;;;; Classification of sub-expressions according to the Consistency Rule
 
-(define-syntax prove
-  (syntax-rules (:)
-    ((_ expr : rule)
-     (prove expr : rule = ⊤))
-    ((_ expr1 : rule operator expr2 . rest)
-     (prove-aux () expr1 : rule operator expr2 . rest))))
-
-(define-syntax prove-aux
-  (syntax-rules (:)
-    ((_ (accum ...)
-        expr1 : rule
-        operator expr2)
-     (prove-proc accum ... (cons '(operator expr1 expr2) rule)))
-    ((_ (accum ...)
-        expr1 : rule1
-        operator1 expr2 : rule2
-        operator2 expr3
-        . rest)
-     (prove-aux (accum ... (cons '(operator1 expr1 expr2) rule1))
-                expr2 : rule2
-                operator2 expr3
-                . rest))))
-
-(define (prove-proc . steps)
-  (for-all (lambda (s)
-             (let ((expr (car s))
-                   (rule (cdr s)))
-               (eq? '⊤ (rule expr))))
-           steps))
+(define (classify/consistency classifier)
+  (lambda (expr)
+    ; Consistency Rule only valid for expressions with sub-expressions
+    (assert (pair? expr))
+    (let recur ((e expr))
+      (let ((class (classifier e)))
+        (and class
+             (if (pair? e)
+               (let* ((operator (car e))
+                      (operands (cdr e))
+                      (occ (map recur operands)))
+                 (define (candidate? operand class)
+                   (and (not class)
+                        (or (operator? operator)
+                            (and (pair? operand)
+                                 (operator? (car operand))))))
+                 (let ((ps (permute (map (lambda (o c)
+                                           (if (candidate? o c) '(⊤ ⊥) (list o)))
+                                         operands occ))))
+                   (or (and (< 1 (length ps))
+                            (let* ((cs (map (lambda (perm)
+                                              (cons perm (classifier
+                                                          `(,operator ,@perm))))
+                                            ps))
+                                   (ecs (filter (lambda (c) (eq? class (cdr c)))
+                                                cs)))
+                              (and (= 1 (length ecs))
+                                   (let ((eperm (caar ecs)))
+                                     (fold-left (lambda (a o c ev)
+                                                  (if (candidate? o c)
+                                                    (cons (cons o ev) a)
+                                                    (if c (append c a) a)))
+                                                '() operands occ eperm)))))
+                       (apply append (filter (lambda (x) x) occ)))))
+               '()))))))
 
 
 ;;;; Proof Rules - specialized partial classification
@@ -129,43 +141,53 @@
              (cdr (assq e v)))
             (else e))))
 
-  (define (permute l)
-    (cond ((null? l) '())
-          ((null? (cdr l)) (map list (car l)))
-          (else (let ((p (permute (cdr l))))
-                  (apply append (map (lambda (a) (map (lambda (r) (cons a r)) p))
-                                     (car l)))))))
-
   (define (all-same-class? l)
     (and (pair? l)  ; No vars, no classifications, results in unclassified.
          (for-all (lambda (x) (and (eqv? (car l) x) x))
                   (cdr l))))
 
   (all-same-class?
-   (map (lambda (v) (classify/basic (subst v)))
+   (map (lambda (v) (classify/known (subst v)))
         (permute (map (lambda (v) `((,v . ⊤) (,v . ⊥)))
                       vars)))))
+
+;;;; Classify
+
+(define (classify rule)
+  (lambda (expr)
+    ; Only valid for classifying if an expression has same value as ⊤ or ⊥
+    (assert (and (pair? expr) (eq? '= (car expr))))
+    (let ((e1 (cadr expr))
+          (c (caddr expr)))
+      (assert (memq c '(⊤ ⊥)))
+      (and (eq? c (rule e1))
+           '⊤))))
 
 ;;;; Law
 
 (define (law theorem)
   (lambda (expr)
-    ; Law rule only valid for established theorems
+    ; Only valid for known theorems
     (assert (member theorem (theorems)))
     (and (or (instance? expr theorem)
-             ; For expression with a primary symmetric operator, try again with
-             ; swapped operands because that's equivalent
              (and (pair? expr)
-                  (symmetric-operator? (car expr))
-                  (instance? `(,(car expr) ,(caddr expr) ,(cadr expr))
-                             theorem)))
+                  ; For expression with a primary symmetric operator, try again
+                  ; with swapped operands because that's equivalent
+                  (or (and (symmetric-operator? (car expr))
+                           (instance? `(,(car expr) ,(caddr expr) ,(cadr expr))
+                                      theorem))
+                      ; For expression with ⇐ operator, try again with
+                      ; equivalent ⇒ form
+                      (and (eq? '⇐ (car expr))
+                           (instance? `(⇒ ,(caddr expr) ,(cadr expr))
+                                      theorem)))))
          '⊤)))
 
 ;;;; Transparency
 
-(define (transparency . laws)
+(define (transparency . rules)
   (lambda (expr)
-    ; All the below assertions are done to ensure reasonable usage
+    ; The below assertions are done to ensure reasonable usage
     (let recur ((expr expr))
       ; Transparency Rule only valid for classifying if two expressions have
       ; equal value
@@ -178,27 +200,108 @@
               (e1-opnd (cdr e1))
               (e2-optr (car e2))
               (e2-opnd (cdr e2)))
-          ; They must have the same operator
-          (assert (eq? e1-optr e2-optr))
-          (let ((e1ol (length e1-opnd))
-                (e2ol (length e2-opnd)))
-            ; They must have operands, to have sub-expressions
-            (assert (for-all positive? (list e1ol e2ol)))
-            ; They must have the same amount of operands
-            (assert (= e1ol e2ol)))
-          ; The corresponding sub-expressions must differ somewhere
-          (assert (not (for-all equal? e1-opnd e2-opnd)))
+          ; The two expressions must have the same operator
+          (and (eq? e1-optr e2-optr)
+               (let ((e1ol (length e1-opnd))
+                     (e2ol (length e2-opnd)))
+                 ; They must have operands, to have sub-expressions
+                 (and (for-all positive? (list e1ol e2ol))
+                      ; They must have the same amount of operands
+                      (= e1ol e2ol)))
+               ; The corresponding sub-expressions must differ somewhere
+               (or (not (for-all equal? e1-opnd e2-opnd))
+                   (assert #F))
 
-          ; The corresponding sub-expressions must have equal values
-          (and (for-all (lambda (e1s e2s)
+               ; The corresponding sub-expressions must have equal values
+               (for-all (lambda (e1s e2s)
                           (or (equal? e1s e2s)
-                              (exists (lambda (l) (eq? '⊤ (l `(= ,e1s ,e2s))))
-                                      laws)
+                              (exists (lambda (r) (eq? '⊤ (r `(= ,e1s ,e2s))))
+                                      rules)
                               (and (pair? e1s) (pair? e2s)
                                    (recur `(= ,e1s ,e2s)))))
                         e1-opnd
                         e2-opnd)
                '⊤))))))
+
+
+;;;; Proving - special form of boolean expression classification
+
+(define-syntax prove
+  (syntax-rules (:)
+    ((_ expr : rule)
+     (prove expr : rule = ⊤))
+    ((_ . rest)
+     (prove-aux () . rest))))
+
+(define-syntax prove-aux
+  (syntax-rules (:)
+    ((_ (accum ...)
+        expr1 : rule
+        operator expr2)
+     (prove-proc accum ... (cons '(operator expr1 expr2) rule)))
+    ((_ (accum ...)
+        expr1 : rule1
+        operator1 expr2 : rule2
+        operator2 expr3
+        . rest)
+     (prove-aux (accum ... (cons '(operator1 expr1 expr2) rule1))
+                expr2 : rule2
+                operator2 expr3
+                . rest))))
+
+(define (prove-proc . steps)
+  (for-all (lambda (s)
+             (let ((expr (car s))
+                   (rule (cdr s)))
+               (eq? '⊤ (rule expr))))
+           steps))
+
+;;;; Proofs in the form of simplication to ⊤ or ⊥
+
+(define-syntax proof
+  (syntax-rules ()
+    ((_ expr : rule)
+     (proof expr : rule = ⊤))
+    ((_ . rest)
+     (proof-aux () . rest))))
+
+(define-syntax proof-aux
+  (syntax-rules (: = ⇒ ⇐ ⊤ ⊥)
+    ; When driving towards ⊤, the operators of the steps can be any mixture of =
+    ; and ⇐
+    ((_ (accum ...) expr : rule = ⊤)
+     (prove accum ... expr : rule = ⊤))
+    ((_ (accum ...) expr : rule ⇐ ⊤)
+     (prove accum ... expr : rule ⇐ ⊤))
+    ((_ (accum ...) expr1 : rule = expr2 more ... ⊤)
+     (proof-aux (accum ... expr1 : rule =) expr2 more ... ⊤))
+    ((_ (accum ...) expr1 : rule ⇐ expr2 more ... ⊤)
+     (proof-aux (accum ... expr1 : rule ⇐) expr2 more ... ⊤))
+    ; When driving towards ⊥, the operators of the steps can be any mixture of =
+    ; and ⇒
+    ((_ (accum ...) expr : rule = ⊥)
+     (prove accum ... expr : rule = ⊥))
+    ((_ (accum ...) expr : rule ⇒ ⊥)
+     (prove accum ... expr : rule ⇒ ⊥))
+    ((_ (accum ...) expr1 : rule = expr2 more ... ⊥)
+     (proof-aux (accum ... expr1 : rule =) expr2 more ... ⊥))
+    ((_ (accum ...) expr1 : rule ⇒ expr2 more ... ⊥)
+     (proof-aux (accum ... expr1 : rule ⇒) expr2 more ... ⊥))))
+
+
+;;;; Adding of proven laws
+
+(define-syntax add-law!
+  (syntax-rules (⊤ ⊥)
+    ((_ law more ... ⊤)
+     (add-law!-proc (proof law more ... ⊤) 'law))
+    ((_ law more ... ⊥)
+     (add-law!-proc (proof law more ... ⊥) '(¬ law)))))
+
+(define (add-law!-proc proven law)
+  (if proven
+    (theorems (cons law (theorems)))
+    (assertion-violation 'add-law! "Invalid proof" 'law)))
 
 
 )
