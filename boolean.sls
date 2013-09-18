@@ -187,9 +187,7 @@
 
 ;;;; Transparency
 
-; TODO: Remove support for multiple rules in one step
-
-(define (transparency . rules)
+(define (transparency rule)
   (lambda (expr)
     ; The below assertions are done to ensure reasonable usage
     (let recur ((expr expr))
@@ -219,8 +217,7 @@
                ; The corresponding sub-expressions must have equal values
                (for-all (lambda (e1s e2s)
                           (or (equal? e1s e2s)
-                              (exists (lambda (r) (eq? '⊤ (r `(= ,e1s ,e2s))))
-                                      rules)
+                              (eq? '⊤ (rule `(= ,e1s ,e2s)))
                               (and (pair? e1s) (pair? e2s)
                                    (recur `(= ,e1s ,e2s)))))
                         e1-opnd
