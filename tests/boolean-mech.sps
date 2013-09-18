@@ -231,9 +231,15 @@
   (no (= ⊥ ⊤) : classify/known)
   (no (= (¬ ⊤) ⊤) : classify/known)
   (no (= (o z) ⊥) : classify/known)
+  (no (= ⊤ ⊥) : classify/known)
+  (no (= ⊤ (¬ ⊤)) : classify/known)
+  (no (= ⊥ (o z)) : classify/known)
   (yes (= ⊥ ⊥) : classify/known)
   (yes (= (¬ ⊤) ⊥) : classify/known)
   (yes (= (∧ ⊤ ⊤) ⊤) : classify/known)
+  (yes (= ⊤ ⊤) : classify/known)
+  (yes (= ⊥ (¬ ⊤)) : classify/known)
+  (yes (= ⊤ (∧ ⊤ ⊤)) : classify/known)
   )
 
 ;;;; Law
@@ -450,6 +456,64 @@
            = (= (∨ (∨ (¬ a) (¬ b)) c)
                 (∨ (∨ (¬ a) (¬ b)) d)) : (classify (law eq-reflex))
            = ⊤)))
+
+  (let ((dist-impl-conj
+         '(= (⇒ x (∧ y z))
+             (∧ (⇒ x y) (⇒ x z))))
+        (antidist-impl-conj
+         '(= (⇒ (∧ x y) z)
+             (∨ (⇒ x z) (⇒ y z))))
+        (dist-conj-disj
+         '(= (∧ x (∨ y z))
+             (∨ (∧ x y) (∧ x z))))
+        (conj-symm
+         '(= (∧ x y) (∧ y x)))
+        (disj-symm
+         '(= (∨ x y) (∨ y x)))
+        (generalization
+         '(⇒ x (∨ x y))))
+
+    (parameterize-append ((theorems (list dist-impl-conj
+                                          antidist-impl-conj
+                                          dist-conj-disj
+                                          conj-symm
+                                          disj-symm
+                                          generalization)))
+
+      (yes   (⇒ (∧ a c) (∧ b d))
+                                         : (law dist-impl-conj)
+           = (∧ (⇒ (∧ a c) b)
+                (⇒ (∧ a c) d))
+                                         : (transparency (law antidist-impl-conj))
+           = (∧ (∨ (⇒ a b) (⇒ c b))
+                (∨ (⇒ a d) (⇒ c d)))
+                                         : (law dist-conj-disj)
+           = (∨ (∧ (∨ (⇒ a b) (⇒ c b))
+                   (⇒ a d))
+                (∧ (∨ (⇒ a b) (⇒ c b))
+                   (⇒ c d)))
+                                         : (transparency (law conj-symm))
+           = (∨ (∧ (⇒ a d)
+                   (∨ (⇒ a b) (⇒ c b)))
+                (∧ (⇒ c d)
+                   (∨ (⇒ a b) (⇒ c b))))
+                                         : (transparency (law dist-conj-disj))
+           = (∨ (∨ (∧ (⇒ a d) (⇒ a b))
+                   (∧ (⇒ a d) (⇒ c b)))
+                (∨ (∧ (⇒ c d) (⇒ a b))
+                   (∧ (⇒ c d) (⇒ c b))))
+                                         : (law disj-symm)
+           = (∨ (∨ (∧ (⇒ c d) (⇒ a b))
+                   (∧ (⇒ c d) (⇒ c b)))
+                (∨ (∧ (⇒ a d) (⇒ a b))
+                   (∧ (⇒ a d) (⇒ c b))))
+                                         : (law generalization)
+           ⇐ (∨ (∧ (⇒ c d) (⇒ a b))
+                (∧ (⇒ c d) (⇒ c b)))
+                                         : (law generalization)
+           ⇐ (∧ (⇒ c d) (⇒ a b))
+                                         : (law conj-symm)
+           = (∧ (⇒ a b) (⇒ c d)))))
   )
 
 ;;;; Proofs in the form of simplication to ⊤ or ⊥
@@ -498,13 +562,55 @@
            = (= (∨ (∨ (¬ a) (¬ b)) c)
                 (∨ (∨ (¬ a) (¬ b)) c)) : (classify (law eq-reflex))
            = ⊤)))
-#;
-  (let ((generalization '(⇒ x (∨ x y)))
-        (non-contradiction ))
-    ; TODO: the inverted form also
-    (parameterize-append ((theorems (list generalization non-contradiction)))
-      (yes   (∧ a (¬ (∨ a b))) : (transparency (law generalization))
-           ⇒ (∧ a (¬ a))       : (classify (law non-contradiction))
+
+  (let ((identity-impl '(= (⇒ ⊤ x) x))
+        (mirror-impl '(= (⇒ x y) (⇐ y x)))
+        (non-contradiction '(¬ (∧ x (¬ x))))
+        (variation-not '(⇒ (⇒ x y) (⇐ (¬ x) (¬ y))))
+        (variation-conj '(⇒ (⇒ x y) (⇒ (∧ x z) (∧ y z))))
+        (conj-symm '(= (∧ x y) (∧ y x)))
+        (generalization '(⇒ x (∨ x y)))
+        (double-neg '(= (¬ (¬ x)) x))
+        (duality '(= (¬ (∧ x y)) (∨ (¬ x) (¬ y))))
+        (mat-impl '(= (⇒ x y) (∨ (¬ x) y))))
+
+    (parameterize-append ((theorems (list identity-impl
+                                          mirror-impl
+                                          non-contradiction
+                                          variation-not
+                                          variation-conj
+                                          conj-symm
+                                          generalization
+                                          double-neg
+                                          duality
+                                          mat-impl)))
+
+      (yes   (¬ (∧ a (¬ (∨ a b))))     : (law identity-impl)
+           = (⇒ ⊤
+                (¬ (∧ a (¬ (∨ a b))))) : (law mirror-impl)
+           = (⇐ (¬ (∧ a (¬ (∨ a b))))
+                ⊤)                     : (transparency
+                                          (classify (law non-contradiction)))
+           = (⇐ (¬ (∧ a (¬ (∨ a b))))
+                (¬ (∧ a (¬ a))))       : (law variation-not)
+           ⇐ (⇒ (∧ a (¬ (∨ a b)))
+                (∧ a (¬ a)))           : (transparency (law conj-symm))
+           = (⇒ (∧ (¬ (∨ a b)) a)
+                (∧ (¬ a) a))           : (law variation-conj)
+           ⇐ (⇒ (¬ (∨ a b))
+                (¬ a))                 : (law mirror-impl)
+           = (⇐ (¬ a)
+                (¬ (∨ a b)))           : (law variation-not)
+           ⇐ (⇒ a (∨ a b))             : (classify (law generalization))
+           = ⊤)
+
+      (yes   (∧ a (¬ (∨ a b)))             : (law double-neg)
+           = (¬ (¬ (∧ a (¬ (∨ a b)))))     : (transparency (law duality))
+           = (¬ (∨ (¬ a) (¬ (¬ (∨ a b))))) : (transparency (law double-neg))
+           = (¬ (∨ (¬ a) (∨ a b)))         : (transparency (law mat-impl))
+           = (¬ (⇒ a (∨ a b)))             : (transparency
+                                              (classify (law generalization)))
+           = (¬ ⊤)                         : classify/known
            = ⊥)))
 
   )

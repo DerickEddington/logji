@@ -157,9 +157,11 @@
   (lambda (expr)
     ; Only valid for classifying if an expression has same value as ⊤ or ⊥
     (assert (and (pair? expr) (eq? '= (car expr))))
-    (let ((e1 (cadr expr))
-          (c (caddr expr)))
-      (assert (memq c '(⊤ ⊥)))
+    (let-values (((e1 c) (cond ((memq (cadr expr) '(⊤ ⊥))
+                                (values (caddr expr) (cadr expr)))
+                               ((memq (caddr expr) '(⊤ ⊥))
+                                (values (cadr expr) (caddr expr)))
+                               (else (assert #F)))))
       (and (eq? c (rule e1))
            '⊤))))
 
@@ -184,6 +186,8 @@
          '⊤)))
 
 ;;;; Transparency
+
+; TODO: Remove support for multiple rules in one step
 
 (define (transparency . rules)
   (lambda (expr)
