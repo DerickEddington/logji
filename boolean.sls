@@ -2,8 +2,6 @@
 ;; Copyright 2013 Derick Eddington.  My MIT-style license is in the file named
 ;; LICENSE from the original collection this file is distributed with.
 
-; TODO: "if" operator
-
 (library (logji boolean)
   (export
     theorems
@@ -24,7 +22,7 @@
     (logji base))
 
 
-(define (operator? x) (memq x '(¬ ∧ ∨ ⇒ ⇐ = ≠)))
+(define (operator? x) (memq x '(¬ ∧ ∨ ⇒ ⇐ = ≠ ?)))
 (define (symmetric-operator? x) (memq x '(∧ ∨ = ≠)))
 
 (define axioms
@@ -39,7 +37,10 @@
     (⇐ ⊤ x)
     (= x x)
     (≠ ⊤ ⊥)
-    (≠ ⊥ ⊤)))
+    (≠ ⊥ ⊤)
+    (? ⊤ ⊤ x)
+    (? ⊥ x ⊤)
+    (? x ⊤ ⊤)))
 
 (define anti-axioms
   '(⊥
@@ -51,7 +52,10 @@
     (⇐ ⊥ ⊤)
     (= ⊤ ⊥)
     (= ⊥ ⊤)
-    (≠ x x)))
+    (≠ x x)
+    (? ⊤ ⊥ x)
+    (? ⊥ x ⊥)
+    (? x ⊥ ⊥)))
 
 (define theorems (make-parameter axioms))
 (define anti-theorems (make-parameter anti-axioms))
@@ -72,7 +76,7 @@
             (operands (cdr expr))
             (operands-classifications (map classify/known operands)))
        (and (not (equal? operands operands-classifications))
-            (for-all (lambda (x) x) operands-classifications)
+            (exists (lambda (x) x) operands-classifications)
             (classify/known `(,operator ,@operands-classifications)))))
     ; Unclassified
     (else #F)))
