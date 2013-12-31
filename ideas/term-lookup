@@ -1,0 +1,41 @@
+($let (('(o a) 1))
+  (o a))
+;=> 1
+
+($let (('(o a) 1))
+  ($let ((a 2))
+    (o a)))
+;Error unbound
+
+($let ((o ...) (a ...))
+  ($let (('(o a) 1))
+    (o a)))
+;=> 1
+
+($let ((o ...) (a ...))
+  ($let (('(o a) 1))
+    ($let ((z o) (b a))
+      (z b))))
+;=> 1
+
+($let ((o ...) (a ...))
+  ($let (('(o a) 1))
+    ($let (('(z) o) ('(b) a))
+      ((z) (b)))))
+;=> 1
+
+($let ((o ($vau (x) #F x))
+       (a 1))
+  ($let (('(o a) 2))
+    ($let ((p o)
+           (b a))
+      (p b))))
+;=> b
+
+($let ((o ($vau (x) #F x))
+       (a 1))
+  ($let (('(o a) 2))
+    ($let ((p o))
+      (p a))))
+;=> 2
+

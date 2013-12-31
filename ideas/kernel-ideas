@@ -1,0 +1,17 @@
+Using Kernel as the meta/implementation language, seems quite promising:
+
+If, say, boolean logic expressions are also valid Kernel expressions, then they
+can use Kernel to evaluate them when Kernel's way of evaluating is desired, but
+also they can use the "proof rules" ways classifying.  E.g.
+  ($define! ∧ ($vau (a b) dyn-env (eval (list $and a b) dyn-env))
+allows ∧ expressions to have the operands evaluated as Kernel expressions, and
+allows the implementation of conjunction in Kernel to be simple.  However, for
+proofs where we don't want the operands evaluated but we want some
+transformation of the enclosing form, we wouldn't have it evaluated as a Kernel
+expression but some other mechanism (implemented in Kernel) would assist the
+proof step.
+
+The idea is to bring the meta and object languages as close as possible, so that
+the proof language (boolean w/ helpers) can prove things about the meta
+language, and so that the meta language can easily implement the object
+language.

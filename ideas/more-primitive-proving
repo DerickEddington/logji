@@ -1,0 +1,84 @@
+(prove (⇒ (∧ a b) c)         : (law mat-impl)
+     = (∨ (¬ (∧ a b)) c)     : (transparency (law duality))
+     = (∨ (∨ (¬ a) (¬ b)) c) : (law disj-assoc)
+     = (∨ (¬ a) (∨ (¬ b) c)) : (law mat-impl)
+     = (⇒ a (∨ (¬ b) c))     : (transparency (law mat-impl))
+     = (⇒ a (⇒ b c)))
+
+(∧ (= (⇒ (∧ a b) c)
+      (∨ (¬ (∧ a b)) c))
+   (∧ (= (∨ (¬ (∧ a b)) c)
+         (∨ (∨ (¬ a) (¬ b)) c))
+      (∧ (= (∨ (∨ (¬ a) (¬ b)) c)
+            (∨ (¬ a) (∨ (¬ b) c)))
+         (∧ (= (∨ (¬ a) (∨ (¬ b) c))
+               (⇒ a (∨ (¬ b) c)))
+            (= (⇒ a (∨ (¬ b) c))
+               (⇒ a (⇒ b c)))))))
+
+
+; Using the Consistency Rule a lot, and accepting as known, theorems proven by
+; consistency as they're accumulated.  First, make the entire expression in a
+; form that will classify as theorem based on pre-established laws.  Then, use
+; Consistency Rule accumulatively/recursively to classify sub-expressions.  As
+; the accumulation of theorems from Consistency Rule progresses, I think it
+; enables additional sub-expressions to be classified.  If so, this might be the
+; method to prove things using only the primitive boolean mechanisms.
+
+(∧ (= (⇒ (∧ a b) c)
+      (∨ (¬ (∧ a b)) c)) ; material implication
+   (∧ (⇒ (= (¬ (∧ a b))
+            (∨ (¬ a) (¬ b))) ; duality
+         (= (∨ (¬ (∧ a b)) c)
+            (∨ (∨ (¬ a) (¬ b)) c))) ; transparency of disjunction
+      (∧ (= (∨ (∨ (¬ a) (¬ b)) c)
+            (∨ (¬ a) (∨ (¬ b) c))) ; associativity of disjunction
+         (∧ (= (∨ (¬ a) (∨ (¬ b) c))
+               (⇒ a (∨ (¬ b) c)))
+            (⇒ (= (= (⇒ a b)
+                     (∨ (¬ a) b)) ; material implication
+                  (= (∨ (¬ a) b)
+                     (⇒ a b))) ; symmetry
+               (= (⇒ (= (⇒ a b)
+                        (∨ (¬ a) b)) ; material implication
+                     (= (⇒ a (∨ (¬ b) c))
+                        (⇒ a (⇒ b c)))) ; transparency of implication
+                  (⇒ (= (∨ (¬ a) b)
+                        (⇒ a b)) ; alt. material implication
+                     (= (⇒ a (∨ (¬ b) c))
+                        (⇒ a (⇒ b c)))) ; transparency of implication
+                  )
+               ) ; transparency of implication
+            ))))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+A law of transparency of conjunction:
+(⇒ (= x y) (= (∧ x z) (∧ y z)))
+
+
+Laws of context assumption:
+
+(= (∧ a (f a))
+   (∧ a (f ⊤)))
+But how to prove?
+And how to use?
+
+
+
+A law of functions:
+(= a ((λ (,v : everything) a) x))

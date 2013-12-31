@@ -1,0 +1,30 @@
+Idea: language that evaluates expressions by first searching for if the
+expression is already bound to a value (registered), and if not then does Kernel
+combiner evaluation.
+
+To make such term searching more efficient, a tree could be used for the
+environment such that matching a term is following the matching path down
+the tree branches, and if a complete path-match exists all the way then the term
+is bound and its value is there, or else the term is not bound and all other
+terms in the env are eliminated and don't need to be tested.
+
+      --symbols
+     /
+env--                               --#[id sym=foo env=...]--cdr--
+     \                             /
+      --pairs--         --symbols--
+               \       /
+                --car--
+                       \
+                        --pairs
+                      
+
+However, extending such an environment tree with a new binding would be less
+efficient than simple stack pushing.  At least functional updating of trees can
+reuse unmodified branches (i.e. share structure).  Also, binders/vau can extend
+envs by a stack of trees, similar to common impl chaining parent envs.  This
+would increase the efficiency of extending envs but decrease efficiency of
+searching for terms (because chain of parents must be exhausted before deciding
+a term is unbound).
+
+So the advantage of such tree envs is for large envs having many complex terms.

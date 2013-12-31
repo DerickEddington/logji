@@ -1,0 +1,205 @@
+; Using the Zbepi language and base Logji helpers, manually compute various
+; proofs.  This shows the underlying mechanisms used, which hopefully will
+; suggest patterns that the high-level proof language should provide.
+
+
+; The first law of portation
+; (= (⇒ (∧ a b) c)
+;    (⇒ a (⇒ b c)))
+; Assume the needed axioms, laws, and helpers are already defined
+
+($when (instance? '(= (⇒ (∧ a b) c)      ; | First step true because
+                      (∨ (¬ (∧ a b)) c)) ; | instance of a law
+                  material-implication)  ;  |
+  ($let (('(= (⇒ (∧ a b) c)              ; |
+              (∨ (¬ (∧ a b)) c))         ; |
+          #T))                           ; |
+
+    ; 2nd step uses transparency
+    ($when (instance?  '(= (¬ (∧ a b))
+                           (∨ (¬ a) (¬ b)))
+                       duality)
+      ($let ((value-representative (string-copy "V.R.")))
+        ($let (('(¬ (∧ a b))     value-representative)
+               ('(∨ (¬ a) (¬ b)) value-representative))
+          (when (term-equal? '(∨ (¬ (∧ a b)) c)
+                             '(∨ (∨ (¬ a) (¬ b)) c))
+            ; NO: term-equal? not strict enough
+            ($let (('(= (∨ (¬ (∧ a b)) c)
+                        (∨ (∨ (¬ a) (¬ b)) c))
+                    #T))
+              )))))))
+
+
+
+#;
+($define $make-law
+  ($vau (vars-types expr val) env
+    (eval (list $let (map ($lambda (x)
+                            (list (list quote (list $type (car x)))
+                                  (cadr x)))
+                          vars-types)
+                (list $let (list (list (list quote expr) val))
+                      (list quote expr)))
+          env)))
+
+
+
+; TODO: Should the below calculation methods be implemented in Scheme instead?
+; I think so, at least for now.
+
+($define transparency
+  ($let ((=-term ($let (('($type x) anything)
+                        ('($type y) anything))
+                   '(= x y))))
+    ($lambda (rule path)
+      ($lambda (expr env known unknown)
+        ($if (instance? (make-term expr env) =-term)
+          ($let ((e1 (cadr expr))
+                 (e2 (caddr expr)))
+            ($let ((s1 (tree-ref/path e1 path))
+                   (s2 (tree-ref/path e2 path)))
+              ($if (equal?/except-path e1 e2 path)
+                (rule
+                  (list = s1 s2) env
+                  ($lambda (val)
+                    ($if (boolean? val)
+                      (known val)
+                      (error "rule didn't give boolean")))
+                  unknown)
+                (error "other sub-expressions not equal" e1 e2))))
+          (error "not = term" expr))))))
+
+($define law
+  ($lambda (b)
+    ($lambda (expr env known unknown)
+      ($if (instance? (make-term expr env) (binding-ident b))
+        (known (binding-val b))
+        (unknown)))))
+
+($define consistency
+  ($lambda (enclosing)
+    ($let* ((e-expr (term-expr enclosing))
+            (e-env (term-env enclosing))
+            (e-val (binding-val (env-binding e-env enclosing)))
+            (e-optr (car e-expr))
+            (e-opnd (cdr e-expr)))
+      ($if (eval (list (list is? applicative) e-optr)
+                 e-env)
+        ($let* ((opnd-vals-possibs
+                 (permute
+                  (map ($lambda (o)
+                         ($if ($or (symbol? o) (pair? o))
+                           ($let ((b (env-binding e-env
+                                       ($if (symbol? o) o (make-term o e-env)))))
+                             ($if b
+                               (list (binding-val b))
+                               (eval (list type-values (list $type o))
+                                     e-env)))
+                           (list o)))
+                       e-opnd)))
+                (e-val-possibs
+                 ; TODO: Damn, if an ovp is a symbol or pair, it will be eval'd!
+                 ($let ((params (do ((n (+ 1 (length (car opnd-vals-possibs))) (- n 1))
+                                     (a '() (cons (string-symbol
+                                                   (string-append "p"
+                                                     (number->string n)))
+                                                  a)))
+                                    ((= 0 n) a))))
+                   (map ($lambda (ovp)
+                          ($let ((b (env-binding e-env
+                                      (make-term (cons e-optr ovp) e-env))))
+                            ($if b
+
+                              (error )))
+                          
+                          (eval (cons* (list $vau params #F
+                                             params)
+                                       e-optr
+                                       ovp)
+                                e-env))
+                        opnd-vals-possibs))))
+
+          ; TODO: If only one permutation gives same val, make env that binds
+          ; the newly-determined terms to their values, for use below.
+
+          ($lambda (expr env known unknown)
+            ($let ((b (env-binding opnds-new-vals-env (make-term expr env))))
+              ($if b
+                (known (binding-val b))
+                (unknown)))))
+
+        (error "not applicative" e-optr)))))
+
+
+($define $calculate
+  ($vau (expr : method . rest) env
+    (if (($symbol=? :) :)
+      ((eval method env)
+       expr env
+       ($lambda (val)
+         ($let ((t (make-term expr env)))
+           ($if (null? rest)
+             (make-binding t val)
+             (eval (list $let (list (list t val))
+                         (cons $calculate rest))
+                   env))))
+       ($lambda () (error "unable to evaluate" expr)))
+      (error "invalid syntax" :))))
+
+
+
+
+($calculate
+
+ (= (⇒ (∧ a b) c)
+    (∨ (¬ (∧ a b)) c))     : (law mat-impl)
+
+ (= (∨ (¬ (∧ a b)) c)
+    (∨ (∨ (¬ a) (¬ b)) c)) : (transparency (law duality) (path 1))
+
+ (= (∨ (∨ (¬ a) (¬ b)) c)
+    (∨ (¬ a) (∨ (¬ b) c))) : (law disj-assoc)
+
+ (= (∨ (¬ a) (∨ (¬ b) c))
+    (⇒ a (∨ (¬ b) c)))     : (law mat-impl)
+
+ (= (⇒ a (∨ (¬ b) c))
+    (⇒ a (⇒ b c)))         : (transparency (law mat-impl) (path 2))
+
+
+ (⇒ (∧ (= (∨ (¬ a) (∨ (¬ b) c))
+          (⇒ a (∨ (¬ b) c)))
+       (= (⇒ a (∨ (¬ b) c))
+          (⇒ a (⇒ b c))))
+    (= (∨ (¬ a) (∨ (¬ b) c))
+       (⇒ a (⇒ b c))))           : (law equality-transitivity)
+
+ (∧ (= (∨ (¬ a) (∨ (¬ b) c))
+       (⇒ a (∨ (¬ b) c)))
+    (= (⇒ a (∨ (¬ b) c))
+       (⇒ a (⇒ b c))))        : zbepi  ; TODO: what's a better name?
+
+ (= (∨ (¬ a) (∨ (¬ b) c))
+    (⇒ a (⇒ b c)))         : (consistency '(⇒ (∧ (= (∨ (¬ a) (∨ (¬ b) c))
+                                                    (⇒ a (∨ (¬ b) c)))
+                                                 (= (⇒ a (∨ (¬ b) c))
+                                                    (⇒ a (⇒ b c))))
+                                              (= (∨ (¬ a) (∨ (¬ b) c))
+                                                 (⇒ a (⇒ b c)))))
+
+
+ ; ... finish all the transitivity
+
+ (= (⇒ (∧ a b) c)
+    (⇒ a (⇒ b c)))  : (consistency ...)
+)
+
+
+
+
+
+($prove (= (⇒ (∧ a b) c)
+           (⇒ a (⇒ b c)))
+  )
+

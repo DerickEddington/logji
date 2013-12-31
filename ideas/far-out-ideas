@@ -1,0 +1,92 @@
+(λ (a b) -> a)
+(λ ('¬ '⊥) -> ⊤
+   ('¬ '⊤) -> ⊥)
+(λ a -> (o 'a a))
+
+
+((▷ a b) a) = b
+((▷ a b c d) a) = b
+((▷ a b c d) c) = d
+((▷ _ b) a) = b  ; when _ is a constant
+((▷ a b c d) a) = ((▷ a b) a)
+
+¬ = (▷ (⊤ : ⊥) (⊥ : ⊤))
+∧ = (▷ (⊤ ⊤ : ⊤) (⊤ ⊥ : ⊥) (⊥ ⊤ : ⊥) (⊥ ⊥ : ⊥))
+
+
+((λ a (o a)) b) = ((▷ b (o b)) b)
+
+((▷ (λ ,a )
+    (▷))
+ (λ ))
+
+
+
+
+((λ* a (λ b c)) d) = ((λ a {d/b}c) a)
+
+(λ y (λ x (o x y)))
+=
+(λ y (λ* y (λ x (o x y))))
+; Appl of such will not subst into the inner λ:
+((λ a (λ* a (λ b c))) d) = (λ* d (λ b c))
+
+Meta axioms of this:
+; subst not done into λ forms:
+  ((λ a (λ b c)) d)
+= (λ b c)            
+  ((λ a (... (λ b c) ...)) d)
+= ({d/a}... (λ b c) {d/a}...)
+
+Laws of this:
+
+;   (λ a (λ b c))
+; = (λ a (λ* a (λ b c)))
+
+;   ((λ a (λ* a (λ b c))) d)
+; = (λ* d (λ b c))
+
+  (λ a b)
+= (λ a (λ* a b))
+
+  ((λ a (λ* a b)) c) ; special limited subst done into λ* forms
+= (λ** (a c) b)
+
+  ((λ** (a b) (λ c d)) e)
+= ((λ a {e/c}d) b)
+
+
+(prove   (λ y (λ x (o x y)))          : law-1
+       = (λ y (λ* y (λ x (o x y)))))
+
+(prove   ((λ y (λ x (o x y)))
+          x)                          : (transparency proof-1)
+       = ((λ y (λ* y (λ x (o x y))))
+          x)                          : law-2
+       = (λ** (y x) (λ x (o x y))))
+
+(prove   (((λ y (λ x (o x y))) x) v)  : (transparency proof-2)
+       = ((λ** (y x) (λ x (o x y)))
+          v)                          : law-3
+       = ((λ y (o v y))
+          x)
+       = (o v x))
+
+Or:
+(prove   ((λ a b) c)        : (transparency law-1)
+       = ((λ a (λ* a b)) c) : law-2
+       = (λ** (a c) b))
+So law:
+  ((λ a b) c)
+= (λ** (a c) b)
+
+So, only need λ** (renamed to λ*)
+
+(prove   ((((λ x (λ y (λ z (o x y z)))) y) z) x)   : (transparency new-law-1)
+       = (((λ* (x y) (λ y (λ z (o x y z)))) z) x)  : (transparency new-law-2)
+       = ((λ* (y z) (λ* (x y) (λ z (o x y z)))) x)
+       = ((λ y )
+          z)
+       = (o y z x))
+
+

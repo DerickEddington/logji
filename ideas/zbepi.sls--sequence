@@ -1,0 +1,332 @@
+(library (logji zbepi)
+  (export
+    ;make-term term-expr term-env term-has-value? term-value
+    eval
+    standard-env)
+  (import
+    (rnrs base)
+    (rnrs control)
+    (rnrs lists)
+    (rnrs records syntactic))
+
+
+  (define-record-type term
+    (fields expr env)
+    (protocol
+     (lambda (m)
+       (lambda (expr env)
+         ;(assert (pair? expr))
+         (m expr env)))))
+
+
+  (define-record-type operative
+    (fields params dyn-env-param body static-env)
+    (protocol
+     (lambda (m)
+       (lambda (params dyn-env-param body static-env)
+         (define (err msg . irrts)
+           (apply error 'operative msg irrts))
+         (define (dup p)
+           (err "duplicate parameter" p))
+         (define (map/check p c)
+           (cond ((and (pair? p)
+                       (eq? 'quote (car p)))
+                  (unless (pair? (cadr p)) (err "invalid parameter" p))
+                  (let ((t (make-term (cadr p) static-env)))
+                    (when (memp (lambda (x) (and (term? x) (term-equal? t x)))
+                                c)
+                      (dup p))
+                    (values t (cons t c))))
+                 ((pair? p)
+                  (let*-values (((a c) (map/check (car p) c))
+                                ((d c) (map/check (cdr p) c)))
+                    (values (cons a d) c)))
+                 ((symbol? p)
+                  (when (memq p c) (dup p))
+                  (values p (cons p c)))
+                 ((or (null? p) (not p))
+                  (values p c))
+                 (else
+                  (err "malformed parameter tree" params))))
+         (let-values (((params _)
+                       (map/check params (if (symbol? dyn-env-param)
+                                           (list dyn-env-param)
+                                           '()))))
+           (m params dyn-env-param body static-env))))))
+
+
+  (define-record-type applicative
+    (fields underlying)
+    (protocol
+     (lambda (m)
+       (lambda (u)
+         (assert (combiner? u))
+         (m u)))))
+
+
+  (define-record-type scheme-escape
+    (fields proc))
+
+
+  (define (combiner? x)
+    (or (operative? x)
+        (applicative? x)
+        (scheme-escape? x)))
+
+
+
+  (define (eval expr env)
+
+    (define (err msg . irrts) (apply error 'eval msg irrts))
+
+    (cond
+      ((pair? expr)
+       (cond
+         ((env-binding env (make-term expr env)) => binding-val)
+         (else
+          (let ((combiner (eval (car expr) env))
+                (operands (cdr expr)))
+            (cond
+              ((operative? combiner)
+               (let ((params        (operative-params        combiner))
+                     (dyn-env-param (operative-dyn-env-param combiner))
+                     (body          (operative-body          combiner))
+                     (static-env    (operative-static-env    combiner)))
+                 (define (incorrect)
+                   (err "incorrect operand tree shape" operands params))
+                 (eval body
+                       (let match ((p params)
+                                   (o operands)
+                                   (e (if (symbol? dyn-env-param)
+                                        (bind static-env dyn-env-param env)
+                                        static-env)))
+                         (cond ((pair? p)
+                                (if (pair? o)
+                                  (match (cdr p) (cdr o)
+                                         (match (car p) (car o) e))
+                                  (incorrect)))
+                               ((or (symbol? p)
+                                    (term? p))
+                                (bind e p o))
+                               ((null? p)
+                                (if (null? o) e (incorrect)))
+                               ((not p)
+                                e))))))
+
+              ((applicative? combiner)
+               (unless (list? operands)
+                 (err "operand tree must be a list" operands))
+               (eval (cons (applicative-underlying combiner)
+                           (map (lambda (o) (eval o env)) operands))
+                     env))
+
+              ((scheme-escape? combiner)
+               ((scheme-escape-proc combiner) operands env))
+
+              (else (err "not a combiner" combiner)))))))
+
+      ((symbol? expr)
+       (cond ((env-binding env expr) => binding-val)
+             (else (err "unbound" expr))))
+
+      (else expr)))
+
+
+
+  (define make-binding cons)
+  (define binding-val cdr)
+
+  (define (bind env sym-or-term val)
+    (cons (cons sym-or-term val)
+          env))
+
+  (define (env-binding env sym-or-term)
+    (assp (if (symbol? sym-or-term)
+            (lambda (a) (eq? a sym-or-term))
+            (lambda (a) (and (term? a) (term-equal? a sym-or-term))))
+          env))
+
+
+
+  (define (term-equal? a b)
+
+    (let ((ea (term-expr a))
+          (eb (term-expr b))
+          (env-a (term-env a))
+          (env-b (term-env b)))
+
+      (define (sym-bind-eq? sa sb)
+        (and (symbol=? sa sb)
+             (eq? (env-binding env-a sa)
+                  (env-binding env-b sb))))
+
+      (define (operative-operands-equal?)
+        (let recur ((oa (cdr ea)) (ob (cdr eb)))
+          (cond ((and (pair? oa) (pair? ob))
+                 (and (recur (car oa) (car ob))
+                      (recur (cdr oa) (cdr ob))))
+                ((and (symbol? oa) (symbol? ob))
+                 (sym-bind-eq? oa ob))
+                (else (equal? oa ob)))))
+
+      (define (applicative-operands-equal?)
+        (let ((oa (cdr ea)) (ob (cdr eb)))
+          (and (list? oa) (list? ob)
+               (= (length oa) (length ob))
+               (for-all (lambda (a b)
+                          (term-equal? (make-term a env-a)
+                                       (make-term b env-b)))
+                        oa ob))))
+
+      (define (operator-binding o env)
+        (cond ((pair? o)
+               (env-binding env (make-term o env)))
+              ((symbol? o)
+               (env-binding env o))
+              (else (make-binding #F o))))
+
+      (cond ((and (pair? ea) (pair? eb))
+             (let ((baa (operator-binding (car ea) env-a))
+                   (bab (operator-binding (car eb) env-b)))
+               (if (and baa bab)
+                 (let ((vaa (binding-val baa))
+                       (vab (binding-val bab)))
+                   (and (eqv? vaa vab)
+                        (if (applicative? vaa)
+                          (applicative-operands-equal?)
+                          (operative-operands-equal?))))
+                 (and (not baa) (not bab)
+                      (term-equal? (make-term (car ea) env-a)
+                                   (make-term (car eb) env-b))
+                      (operative-operands-equal?)))))
+
+            ((and (symbol? ea) (symbol? eb))
+             (sym-bind-eq? ea eb))
+
+            (else (equal? ea eb)))))
+
+
+
+  (define (procedure->applicative proc)
+    (make-applicative
+     (make-scheme-escape
+      (lambda (args _) (apply proc args)))))
+
+
+  (define standard-env
+    (fold-left
+     (lambda (e x) (bind e (car x) (eval (cdr x) e)))
+     '()
+     `(($vau . ,(make-operative '(params dyn-env-param body)
+                                'static-env
+                                (cons (procedure->applicative make-operative)
+                                      '(params dyn-env-param body static-env))
+                                '()))
+
+       ($if . ,(make-operative '(test consq altn)
+                               'dyn-env
+                               (cons (procedure->applicative
+                                      (lambda (t c a de)
+                                        (if (eval t de)
+                                          (eval c de)
+                                          (eval a de))))
+                                     '(test consq altn dyn-env))
+                               '()))
+
+       (eval   . ,(procedure->applicative eval))
+       (wrap   . ,(procedure->applicative make-applicative))
+       (unwrap . ,(procedure->applicative applicative-underlying))
+       (cons   . ,(procedure->applicative cons))
+       (null?  . ,(procedure->applicative null?))
+
+       (list . (wrap ($vau args #F args)))
+
+       ($lambda . ($vau (params body) static-env
+                    (wrap (eval (list $vau params #F body) static-env))))
+
+       (car . ($lambda ((a . d)) a))
+       (cdr . ($lambda ((a . d)) d))
+       (cadr . ($lambda ((a b . r)) b))
+
+       (empty-environment . ,'())
+
+       (apply . ($lambda (appv arg . opt)
+                  (eval (cons (unwrap appv) arg)
+                        ($if (null? opt) empty-environment (car opt)))))
+
+       ($let . ($vau (((pt expr)) body) env
+                 (eval (list (list $lambda (list pt) body) expr) env)))
+
+       ; TODO: move here everything that can use basic lambda/let
+
+       #;(recur . (wrap ($vau (comb) #F
+                          ($vau opnds env
+                            (eval (cons comb (cons comb opnds)) env)))))
+
+       ($letrec . ($vau (((id expr)) body) env
+                    ($let ((f (eval (list $lambda (list id) expr)
+                                    env)))
+                      ($let ((r ($lambda (r)
+                                  (f ($vau o e (eval (cons (r r) o) e))))))
+                        (eval (list $let (list (list id (r r)))
+                                    body)
+                              env)))))
+
+       (list* . ($letrec ((aux ($lambda ((a . r))
+                                 ($if (null? r) a (cons a (aux r))))))
+                  ($lambda args (aux args))))
+
+       #;(map . (recur ($lambda (self func list)
+                         ($if (null? list)
+                           list
+                           (cons (func (car list))
+                                 (self self (cdr list)))))))
+
+       (map . ($letrec ((map ($lambda (func list)
+                               ($if (null? list)
+                                 list
+                                 (cons (func (car list))
+                                       (map func (cdr list)))))))
+                map))
+
+       (map . ($letrec ((aux ($lambda (func lists)
+                               ($if (null? (car lists))
+                                 ()
+                                 (cons (apply func (map car lists))
+                                       (aux func (map cdr lists)))))))
+                ($lambda (func list1 . lists)
+                  (aux func (cons list1 lists)))))
+
+       ; TODO: Why have $sequence if side-effects not allowed?
+
+       #;($sequence . (recur ($vau (self expr . rest) dyn-env
+                               ($if (null? rest)
+                                 (eval expr dyn-env)
+                                 ((wrap ($vau #F #F (apply self (cons self rest))))
+                                  (eval expr dyn-env))))))
+
+       ($sequence . ($letrec (($sequence ($vau (expr . rest) env
+                                           ($if (null? rest)
+                                             (eval expr env)
+                                             ($let ((#F (eval expr env)))
+                                               (eval (cons $sequence rest)
+                                                     env))))))
+                      $sequence))
+
+       ($vau . ($vau (params dyn-env-param . body) static-env
+                 (eval (list $vau params dyn-env-param (cons $sequence body))
+                       static-env)))
+
+       ($lambda . ($vau (params . body) static-env
+                    (wrap (eval (list* $vau params #F body) static-env))))
+
+       ($let . ($vau (bindings . body) env
+                 (eval (cons (list* $lambda (map car bindings) body)
+                             (map cadr bindings))
+                       env)))
+
+       (quote . ($vau (expr) env
+                  (,(procedure->applicative make-term) expr env)))
+       )))
+
+  )

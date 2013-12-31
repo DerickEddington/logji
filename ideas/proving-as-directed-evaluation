@@ -1,0 +1,271 @@
+A language where:
+
+Expressions represent values, like logic/math.
+
+Expressions may be evaluated by a variety of different methods (axiom,
+instance-of-known, consistency, etc), like logic/math.
+
+The author of expressions can specify what method to use to evaluate
+expressions, including for sub-expressions, but if no method is specified then
+some default method is used (maybe Kernel combiner semantics).  So, the language
+needs a syntax/form for such method specifications that associate with value
+expressions.
+
+A proof is an expression that is evaluated by a compound method, and such method
+includes evaluating sub-expressions (the proof steps) that also specify their
+evaluation method (the law or proof rule that makes a step valid).  So, the
+primary expression that is the goal of the proof is expressed by itself outside
+the proof, giving clarity, and the proof steps, including the primary expression
+again, are expressed next to the primary expression.  Also, the compound method
+of evaluation of the primary expression will need to be able to determine the
+primary expression's value from the proof-step expressions' evaluated values by
+different methods such as the Consistency Rule or another rule.
+
+Some ways to think of this language are: all evaluations are proofs, or all
+evaluations are explicitly directed to use methods that allow an evaluation that
+might not be possible or efficient by the common programming-language
+single-evaluation-method of term reduction.
+
+The Axiom Rule is the method for defining fundamental expressions' values.
+
+
+Also, maybe have scoped expression/value pairs, and expression evaluation
+automatically registers the pair of the expression and its value, and registered
+expressions are available (e.g. for use in proofs) in their scope.  Expressions
+may have free variables (typed to a domain) or not, and bound variables are just
+atomic (non-compound) single-symbol expressions that have been evaluated to a
+value in a scope.  When expressing a previously evaluated expression, the
+default method of evaluation is to give the registered value, similar to
+expressing a bound variable; however an instance of a previously registered
+expression (that is not exactly the same expression) must specify its
+eval-method to be "instance of this previously registered expression".
+
+Maybe instead of saying "register" I should say "bind", as in "expressions may
+be bound to values" (similar to common "variables may be bound to values").
+
+Unlike common programming languages, every main-level expression (i.e. not
+sub-expressions) is automatically bound-to/registered-with its value (in the
+scope).  This is useful for proofs.
+
+The directed-evaluation approach is effective for this because it avoids
+exhaustively searching all registered expressions (bindings) to see if an
+expression is an instance of one, which might otherwise be attempted in a naive
+design.
+
+
+Remaining is to design the facility (and implementation) of variables' domain
+restrictions.
+
+
+
+HMMM:
+
+(define transparency-rule
+  (vau (subexpr-eval-method subexpr-index-path) #F
+    (vau ((=-optr (appv1 . opnds1) (appv2 . opnds2))) env
+      (let ((subexpr1 )
+            (subexpr2 )
+            (f ))
+        (proof
+          (= subexpr1 : kernel
+             subexpr2 : kernel) : subexpr-eval-method
+          
+          (⇒ (= subexpr1 : kernel
+                subexpr2 : kernel)
+             (= (f : kernel subexpr1 : kernel)
+                (f : kernel subexpr2 : kernel))) : (instance-of transparency-law)
+
+          (= (f subexpr1) (f subexpr2)) : (consistency previous)
+
+          ; Incorrect...
+
+          (f subexpr1) : kernel
+          (f subexpr2) : kernel
+
+          (= (= (f subexpr1) : kernel
+                (f subexpr2) : kernel)
+             (= expr1 : kernel
+                expr2 : kernel))          : (instance-of equality-law)
+
+          ; Last expression's value is return value of proof form
+          (= expr1 : kernel
+             expr2 : kernel) : (consistency multi-previous))))))
+
+
+
+Discovery: Transparency Law not valid for operative combiners in general
+
+($define! op1 ($vau (a) #F a))
+($define! op2 ($vau (a) e ($if (pair? a) (eval (car a) e) a)))
+
+(= (+ 1 2) 3) ;=> #T
+
+(= (op1 (+ 1 2)) (op1 3)) ;=> #F
+(= (op2 (+ 1 2)) (op2 3)) ;=> #F
+
+However, some operatives it is valid for
+
+(= ($if #T 1 2) ($if (not #F) 1 2)) ;=> #T
+
+so hopefully such operatives can have general laws proven for them, such as
+(⇒ (= a b)
+   (= ($if a x y)
+      ($if b x y)))
+
+
+
+(define transparency-law
+  (let ((⇒ (lambda (x) (or (bound-var-equal? (syntax ⇒) x) (eq? ⇒ x))))
+        (= (lambda (x) (or (bound-var-equal? (syntax =) x) (eq? = x))))
+        (a anything?)
+        (b anything?)
+        (f functional-applicative?))
+    (law
+     (⇒ (= a b)
+        (= (f a) (f b))))))
+
+(define law
+  (vau (form) env
+    (let recur (())
+      )))
+
+
+
+((tau (a b c)
+      ((a anything?) (b anything?) (c (lambda (c) (equal? a c))) (d number?))
+      env ..?
+   (get-current-environment))
+ x y x)
+=>
+#[environment
+  parent = <whatever>
+  bindings = (#[bind symbol = a
+                     type = <anything?>
+                     value = x]
+              #[bind symbol = b
+                     type = <anything?>
+                     value = y]
+              #[bind symbol = c
+                     type = <the-lambda>
+                     value = x]
+              #[bind symbol = d
+                     type = <number?>])]
+
+((tau (⇒ =)
+      ((a anything?) (b anything?) (f functional-applicative?))
+      #F
+   (let* ((transparency-law (law (⇒ (= a b) (= (f a) (f b)))))
+          (? (instance-of? transparency-law))) ; operative
+     (? (⇒ (= a b) (= (f a) (f b)))) ;=> #T
+     (? (⇒ (= 1 2) (= (f 1) (f 2)))) ;=> #T
+     (let ((z (lambda o o)))
+       (? (⇒ (= x y) (= (z x) (z y))))) ;=> #T
+     ))
+ <⇒>
+ <=>)
+
+
+
+#[expression form := (o a b)
+             env := <some-env>         ; optional
+             value := <its-value>      ; optional
+             type := <some-predicate>] ; optional
+
+(let ((a ...) (b ...) (c ...)
+      (d a)   (e b)   (f c))
+  (expression-equal? (a b c) (d e f))) ;=> #T
+
+(define expression
+  (lambda (form env)
+    (let recur ((form form))
+      (cond ((pair? form)
+             (make-expression (cons (recur (car form)) (recur (cdr form)))
+                              env))
+            ((symbol? form)
+             (cond ((bound-value? form env)
+                    (make-expression form env (eval form env)))
+                   ((bound-type? form env)
+                    (make-expression form env <no-value> (type-of form env)))
+                   (else
+                    (make-expression form env))))
+            (else
+             (make-expression form env))))))
+
+(define expression-equal?
+  (vau (a b) env
+    (let recur ((a (expression a env))
+                (b (expression b env)))
+      (cond ((and (expression? a) (expression? b))
+             (cond ((and (has-value? a) (has-value? b))
+                    (recur (expression-value a) (expression-value b)))
+                   ((and (has-env? a) (has-env? b))
+                    (or (and (eq? (expression-env a) (expression-env b))
+                             (recur (expression-form a) (expression-form b)))
+                        TODO))
+                   ((and (not (has-value? a)) (not (has-value? b))
+                         (not (has-env? a)) (not (has-env? b)))
+                    (recur (expression-form a) (expression-form b)))
+                   (else #F)))
+            ((and (not (expression? a)) (not (expression? b)))
+             (if (and (pair? a) (pair? b))
+               (and (recur (car a) (car b))
+                    (recur (cdr a) (cdr b)))
+               (equal? a b)))
+            (else #F)))))
+
+(define (eval expr env)
+  (cond
+    ((expression? expr)
+     (cond ((has-value? expr)
+            (expression-value expr))
+           ((has-env? expr)
+            (eval (expression-form expr)
+                  (expression-env expr)))
+           (else
+            (eval (expression-form expr)
+                  env))))
+    ((pair? expr)
+     (let ((combiner (eval (car expr) env)))
+       (cond ((operative? combiner)
+              (eval (operative-body combiner)
+                    (let match (...)
+                      ; each parameter of the tree has the operand to be bound
+                      ; to type-predicate checked first, then the param is bound
+                      ; to an #[expression] structure that represents the
+                      ; operand including the dyn-env of the operand (this
+                      ; replaces the Kernel way of passing the dyn-env) ... BUT
+                      ; I think this would break the space-safety of
+                      ; tail-recursion unless lambda can disable it
+                      )))
+             ((applicative? combiner)
+              ...like Kernel...)
+             (else (error ...)))))
+    ...))
+
+
+
+
+Work towards making this example proof possible:
+
+(proof
+ (= S (:= x (+ x 1))) : axiom
+
+ (= (:= x (+ x 1))
+    (= x* (+ x 1)))   : (instance-of assignment-law)
+    
+ (= S (= x* (+ x 1))) : ()
+)
+
+
+OR???
+(specification-implementable? S)
+: (proof (specification-implementable? S) : ?
+       = )
+
+
+OR???
+(type-let (((x x*) (y y*))                 ; type-let is tau use
+           (memory-state integer integer))
+  (let ((S '(:= x (+ x 1)))) ; quote constructs syntax object
+    ))
+

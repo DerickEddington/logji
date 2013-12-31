@@ -1,0 +1,92 @@
+Need a type system that does:
+
+
+Handle infinite and very-large domains by providing means of determining inclusion based on ways other than exhaustive membership testing.  Arbitrary meta-lang (Scheme or Kernel) procedures can accomplish this I think, at the risk of allowing arbitrary meta-lang computations which could have bugs.  Or maybe types should be represented by a meta-lang data struc that can have whatever is useful.
+
+
+
+Provide means of supplying every value in a domain, for uses such as completion-rule or consistency-rule evaluation.
+
+
+
+Able to determine inclusion of types in other types, like Hehner's bunch inclusion can do for inclusion of a bunch in another bunch.
+
+(includes? d a) : (proof
+                   
+                   (includes? d b) : (proof ...similar...)
+                   
+                   (∧ (includes? d b) : known
+                      (includes? b a) : known) : eval
+                      
+                   (⇒ (∧ (includes? d b)
+                         (includes? b a))
+                      (includes? d a)) : (instance-of inclusion-transitivity)
+                      
+                   (includes? d a) : (consistency previous))
+
+($if (eval '(includes? d a))
+  ...
+  ...)
+
+
+
+
+But still: how to have law expressions with unbound variables that are type-restricted?
+
+($define (number-identity-law
+          number-symmetry-law)
+  ($let (('(includes? x numbers) #T))
+    (list '(= (+ x 0) x)
+          '(= (+ x y) (+ y x)))))
+NO
+
+
+
+
+
+I'm wondering if the core language (zbepi) should fundamentally provide instance-of matching and registering of law-expressions (having type-restricted unbound variables), by resolving all term lookups in environments by instance-of (instead of term-equal?) and by supporting binding of symbols/terms to type info but not values (normal lookup will error because unbound, but a special lookup will retrieve type info).  However I suspect this will create other challenging issues as a consequence.
+
+With this, establishing an axiom would be as easy as:
+
+($let-type ((x number))
+  ($let (('(= (+ x 0) x) #F))
+    (= (+ (num-valued) 0) (num-valued)) ;=> #T
+    ))
+
+NO
+
+
+
+
+($let (('(type x) number))
+  ($let ((num-id-law '(= (+ x 0) x))
+         (num-symm-law '(= (+ x y) (+ y x))))
+    (instance? '(= (+ (num-valued) 0) (num-valued)) num-id-law) ;=> #T
+    ))
+
+(define (instance? test pattern)
+  (let ((env-t (term-env test))
+        (env-p (term-env pattern)))
+    (let recur ((et (term-expr test))
+                (ep (term-expr pattern)))
+      (cond ((and (pair? et) (pair? ep))
+             (and (recur (car et) (car ep))
+                  (recur (cdr et) (cdr ep))))
+            ((symbol? ep)
+             (let ((bt (env-binding env-t et))
+                   (bp (env-binding env-p ep)))
+               (if (and bt bp)
+                 (eqv? (binding-val bt) (binding-val bp))
+                 (and (not bt) (not bp)
+                      (let ((tt (instance? (make-term (list (make-term
+                                                             'type standard-env)
+                                                            et)
+                                                      env-t)
+                                           ???))
+                            (tp ))
+                        )
+                    #;(let ((tt (eval `(type ,et) env-t))
+                            (tp (eval `(type ,ep) env-p)))
+                        (eval (list includes? tt tp) dyn-env))))))
+            (else
+             (equal? et ep))))))

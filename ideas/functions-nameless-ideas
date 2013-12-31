@@ -1,0 +1,47 @@
+((λ v v0) x) = x
+
+(((λ v (λ v (o v0 v1))) x) y)
+((λ v (o v0 x)) y)
+= (o y x)
+
+How to prevent?:
+((λ v (λ v (o v0 v1))) v0)
+= (λ (o v0 v0))
+
+((▷ a a0) x) = x
+((▷ a b (o a0 b0)) x y) = (o x y)
+((▷ (a b) (▷ (a b) (o a0 a1 b1 b0))) (c d) (e f)) = (o e c d f)
+((▷ (a b) (c d) (o c0 a0 b0 d0)) (c d) (e f)) = (o e c d f)
+
+((▷ (v) v0) (x)) = x
+(▷ (a b c) (▷ (a (b (c))) (o a1 b1 c1 a0 b0 c0)))
+(▷ ('x x) (o x0 global))
+
+
+¬ = (▷ '⊤ ⊥ ▷ '⊥ ⊤)
+∧ = (▷ '⊤ '⊤ ⊤ ▷ '⊥ x ⊥ ▷ x '⊥ ⊥)
+= = (▷ x x ⊤ ▷ _ _ ⊥)
+
+(▷ 'a b ▷ '(b) c d ▷ (e f) (g h) (i j) body)
+
+(▷ a b c ▷ d e f g) = (▷ a (▷ b c) ▷ d (▷ e (▷ f g)))
+
+
+With dynamic patterns:
+(▷ p (▷ ,p0 body))
+
+Transparency Rule:
+
+(t (= b c)
+   (= (o a b) (o a c)))
+
+t = ((▷ f (▷ ('= a b) (f1 f1 a0 b0)))
+     (▷ f pa pb
+        (▷ ('= (op a . ra) (op b . rb))
+           ((▷ ,pa1 ,pb1
+               ⊤
+             ▷ a b
+             ((▷ '⊤ ⊤
+               ▷ _ ((f2 f2 pa2 pb2) (= (op0 . ra) (op0 . rb))))
+              ((f2 f2 pa2 pb2) (= a0 b0))))
+            a0 b0))))

@@ -1,0 +1,113 @@
+(define (instance-of? pattern-term)
+  (lambda (test-term)
+    ))
+
+(define o ...)
+
+(check ((instance-of? (term (o unbound)))
+        (term (o unbound)))
+       => #T)
+(check ((instance-of? (term (o unbound1)))
+        (term (o unbound2)))
+       => #F)
+(check ((instance-of? (term (o unbound)))
+        (let () (term (o unbound))))
+       => #T)
+
+(check ((instance-of? (term o))
+        (let ((z o)) (term z)))
+       => #T)
+(check ((instance-of? (term o))
+        (let ((o +)) (term o)))
+       => #F)
+
+(let-type ((a integer?))
+  (check ((instance-of? (term (o a)))
+          (o 1))
+         => #T)
+  (check ((instance-of? (term (o a)))
+          (let-type ((b integer?)) (o b)))
+         => #T))
+
+HOW?
+(let-type ((a number?))
+  (check ((instance-of? (term (o a)))
+          (o 1))
+         => #T)
+  (check ((instance-of? (term (o a)))
+          (let-type ((b integer?)) (o b)))
+         => #T))
+
+So, instance-of? requires bunch (type) inclusion operator/predicate
+
+(check (includes? 1 naturals) => #T)
+(check (includes? naturals integers) => #T)
+(check (includes? rationals numbers) => #T)
+
+But implementing includes? completely requires other advanced/built-up facilities such as known-value evaluation (to use axioms like (includes? naturals integers)) which requires matching terms against each other, which is what instance-of? does.  So a more primitive means of matching terms is required to avoid the cyclic dependency.
+
+
+
+Idea: (term ...) constructs new term value only if same term not already registered in environment, if already registered then returns registered term.  This seems to allow the way of identifying registered terms by their symbolic structure like bound values are identified by symbols, without the ambiguity of whether a syntax means to evaluated by default method (Kernel semantics) or means to find a registered term and yield its value.
+
+With the above term idea and a basic term matcher, much could be built on these I think.  Maybe with only above term idea, eq? is useful basic term matcher?:
+
+(check (eq? (term o) (term o)) => #T)
+(check (eq? (term o) (let () (term o))) => #T)
+
+But for term to find registered term, some way of basic matching other than eq? is required.
+
+But how is a term initially registered in an environment?  letrec is not needed/desired for terms, so some sort of functional fold cons'ing to extend environments sounds good, such as a sequence operative that evaluates successive expressions in env extended by previous expressions in the sequence:
+
+($context  ; maybe name it something else
+ ($term/value (includes? naturals integers) #T)
+ ($term (includes? naturals integers)))
+=>
+#[term form = (includes? naturals integers)
+       env = <the-dyn-env>
+       value = #T]
+
+But what about issues like?:
+($context
+ ($term/value a #T)
+ ($term/value a #F))
+Or?:
+(context
+ (term/vaue o ...)
+ (let ((o ...different...))
+   (term o)))
+
+If term strucs are used for all environment bindings, then
+($context ($term/value a 1) a)
+is equivalent to
+(let ((a 1)) a)
+and
+(let ((a 1)) (term a))
+is equivalent to
+($context ($term/value a 1) (term a))
+
+
+
+(define term
+  (vau (form) env
+    (if (env-ref ))))
+
+
+
+
+Need sophisticated matching and binding that does destructuring-binding as well as equality matching of symbols, terms, and arbitrary objects, as well as binding terms to values.  Trying to have both equality matching and binding of terms requires syntax that distinguishes these uses.  Maybe matching of symbols should just be a case of term matching where the symbol is unbound in the pattern's static environment.  Maybe predicate matching should use the fundamental facility of binding terms to type predicates (but not values) if I decide to have this facility.
+
+Pattern ideas:
+
+(a) ; any list of length 1, binds a
+('a) ; any list of length 1, binds (term a) 
+(,a) ; any list of length 1 if car matches predicate a evals to
+(,'a) ; any list of length 1 if car matches (term a)
+
+(,'= (o1 . opnds1) (o1 . opnds1))
+
+But a lot of desired checking is too complicated to specify in patterns anyway, so why have patterns more sophisticated than just the needed binding of terms and variables to values or types?
+
+
+
+
