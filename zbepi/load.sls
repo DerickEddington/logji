@@ -13,6 +13,10 @@
     (logji zbepi))
 
 
+  (define $let (eval '$let standard-env))
+  (define get-current-environment (eval 'get-current-environment standard-env))
+
+
   (define $define-marker (string-copy "$define-marker"))
 
   (define $define
@@ -32,8 +36,8 @@
       ((file env)
        (with-input-from-file file
          (lambda ()
-           (let loop ((env (eval `($let (($define ,$define))
-                                    (get-current-environment))
+           (let loop ((env (eval `(,$let (($define ,$define))
+                                    (,get-current-environment))
                                  env))
                       (vals '()))
              (let ((expr (read)))

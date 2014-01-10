@@ -1,89 +1,54 @@
-($define ∧ #;(list "∧") ($lambda (x y) ($if x ($if y #T #F) #F)))
-($define ∨ (list "∨") #;($lambda (x y) ($if x #T ($if y #T #F))))
-($define ¬ (list "¬") #;($lambda (x) ($if x #F #T)))
-($define ⇒ #;(list "⇒") ($lambda (x y) (∨ (¬ x) y)))
-($define '(= #T #T) #T)
-($define '(= #T #F) #F)
-($define '(⇒ #T #T) #T)
-($define '(⇒ #T #F) #F)
+($define $define-law
+  ($vau (name . patterns) env
+    (eval (list $define name
+                (eval (cons (list $vau (map ($lambda (p) (make-term p env))
+                                            patterns)
+                                  #F
+                                  (list get-current-environment))
+                            (map ($lambda #F #T) patterns))
+                      empty-environment))
+          env)))
 
-($define boolean (list "boolean type"))
-($define '(type-values boolean) (list #T #F))
-($define '($type ∨) applicative)
-($define '($type ⇒) applicative)
+($define ⊤ #T)
+($define ⊥ #F)
 
-($define mat-impl
-  (make-binding
-   ($let (('($type x) boolean)
-          ('($type y) boolean))
-     '(= (⇒ x y) (∨ (¬ x) y)))
-   #T))
+($define x (var boolean))
+($define y (var boolean))
+($define z (var boolean))
 
-($define duality
-  (make-binding
-   ($let (('($type x) boolean)
-          ('($type y) boolean))
-     '(= (¬ (∧ x y)) (∨ (¬ x) (¬ y))))
-   #T))
+($define ∧ ($lambda (x y) ∧-unimpl))
+($define '($type (∧ x y)) boolean)
+($define ∨ ($lambda (x y) ∨-unimpl))
+($define '($type (∨ x y)) boolean)
+($define ¬ ($lambda (x) ¬-unimpl))
+($define '($type (¬ x)) boolean)
+($define ⇒ ($lambda (x y) ⇒-unimpl))
+($define '($type (⇒ x y)) boolean)
+($define '($type (= x y)) boolean)
 
-($define disj-assoc
-  (make-binding
-   ($let (('($type x) boolean)
-          ('($type y) boolean)
-          ('($type z) boolean))
-     '(= (∨ (∨ x y) z) (∨ x (∨ y z))))
-   #T))
+($define '(∧ ⊤ ⊤) #T)
+($define '(⇒ ⊤ ⊤) #T)
 
-($define eq-symm
-  (make-binding
-   ($let (('($type x) boolean)
-          ('($type y) boolean))
-     '(= (= x y) (= y x)))
-   #T))
+($define-law mat-impl
+  (= (⇒ x y) (∨ (¬ x) y))
+  (= (∨ (¬ x) y) (⇒ x y)))
+($define-law duality
+  (= (¬ (∧ x y)) (∨ (¬ x) (¬ y))))
+($define-law disj-assoc
+  (= (∨ (∨ x y) z) (∨ x (∨ y z))))
+;($define-law eq-symm    (= (= x y) (= y x))
+($define-law eq-trans
+  (⇒ (∧ (= x y) (= y z)) (= x z)))
 
-($define eq-trans
-  (make-binding
-   ($let (('($type x) boolean)
-          ('($type y) boolean)
-          ('($type z) boolean))
-     '(⇒ (∧ (= x y) (= y z))
-         (= x z)))
-   #T))
 
 ; The first law of portation
 ; (= (⇒ (∧ a b) c)
 ;    (⇒ a (⇒ b c)))
-($let ((∧-use-type (make-binding
-                    ($let (('($type x) boolean)
-                           ('($type y) boolean))
-                      '($type (∧ x y)))
-                    boolean))
-       (∨-use-type (make-binding
-                    ($let (('($type x) boolean)
-                           ('($type y) boolean))
-                      '($type (∨ x y)))
-                    boolean))
-       (¬-use-type (make-binding
-                    ($let (('($type x) boolean))
-                      '($type (¬ x)))
-                    boolean))
-       (⇒-use-type (make-binding
-                    ($let (('($type x) boolean)
-                           ('($type y) boolean))
-                      '($type (⇒ x y)))
-                    boolean))
-       (=-use-type (make-binding
-                    ($let (('($type x) boolean)
-                           ('($type y) boolean))
-                      '($type (= x y)))
-                    boolean))
-       ('($type a) boolean)
-       ('($type b) boolean)
-       ('($type c) boolean))
+($let ((a (var boolean))
+       (b (var boolean))
+       (c (var boolean)))
 
   ($calculate
-
-   ($type (∧ a b)) : (law ∧-use-type)
 
    (= (⇒ (∧ a b) c)
       (∨ (¬ (∧ a b)) c))     : (law mat-impl)
@@ -91,53 +56,14 @@
    (= (∨ (¬ (∧ a b)) c)
       (∨ (∨ (¬ a) (¬ b)) c)) : (transparency 1 (law duality))
 
-   ($type (¬ a)) : (law ¬-use-type)
-   ($type (¬ b)) : (law ¬-use-type)
-
    (= (∨ (∨ (¬ a) (¬ b)) c)
       (∨ (¬ a) (∨ (¬ b) c))) : (law disj-assoc)
 
-   ($type (∨ (¬ b) c)) : (law ∨-use-type)
-
-   (= (⇒ a (∨ (¬ b) c))
-      (∨ (¬ a) (∨ (¬ b) c))) : (law mat-impl)
-
-   ($type (⇒ a (∨ (¬ b) c))) : (law ⇒-use-type)
-   ($type (∨ (¬ a) (∨ (¬ b) c))) : (law ∨-use-type)
-
-   (= (= (⇒ a (∨ (¬ b) c))
-         (∨ (¬ a) (∨ (¬ b) c)))
-      (= (∨ (¬ a) (∨ (¬ b) c))
-         (⇒ a (∨ (¬ b) c))))    : (law eq-symm)
-
-   ($type (= (∨ (¬ a) (∨ (¬ b) c))
-             (⇒ a (∨ (¬ b) c))))   : (law =-use-type)
-
    (= (∨ (¬ a) (∨ (¬ b) c))
-      (⇒ a (∨ (¬ b) c)))    : (consistency '(= (= (⇒ a (∨ (¬ b) c))
-                                                  (∨ (¬ a) (∨ (¬ b) c)))
-                                               (= (∨ (¬ a) (∨ (¬ b) c))
-                                                  (⇒ a (∨ (¬ b) c)))))
-
-   (= (⇒ a (⇒ b c))
-      (⇒ a (∨ (¬ b) c)))     : (transparency 2 (law mat-impl))
-
-   ($type (⇒ b c)) : (law ⇒-use-type)
-   ($type (⇒ a (⇒ b c))) : (law ⇒-use-type)
-
-   (= (= (⇒ a (⇒ b c))
-         (⇒ a (∨ (¬ b) c)))
-      (= (⇒ a (∨ (¬ b) c))
-         (⇒ a (⇒ b c))))    : (law eq-symm)
-
-   ($type (= (⇒ a (∨ (¬ b) c))
-             (⇒ a (⇒ b c))))   : (law =-use-type)
+      (⇒ a (∨ (¬ b) c)))     : (law mat-impl)
 
    (= (⇒ a (∨ (¬ b) c))
-      (⇒ a (⇒ b c)))    : (consistency '(= (= (⇒ a (⇒ b c))
-                                              (⇒ a (∨ (¬ b) c)))
-                                           (= (⇒ a (∨ (¬ b) c))
-                                              (⇒ a (⇒ b c)))))
+      (⇒ a (⇒ b c)))         : (transparency 2 (law mat-impl))
 
 
    (∧ (= (∨ (¬ a) (∨ (¬ b) c))
@@ -152,10 +78,10 @@
       (= (∨ (¬ a) (∨ (¬ b) c))
          (⇒ a (⇒ b c))))           : (law eq-trans)
 
-   ($type (= (∨ (¬ a) (∨ (¬ b) c))
-             (⇒ a (⇒ b c))))       : (law =-use-type)
 
-   (= (∨ (¬ a) (∨ (¬ b) c))
+   (= (∨ (¬ a) (∨ (¬ b) c))    ; This is failing because (∧ ⊤ ⊤) is also bound,
+                               ; This is a flaw of the environment term-bindings
+                               ; design.
       (⇒ a (⇒ b c)))         : (consistency '(⇒ (∧ (= (∨ (¬ a) (∨ (¬ b) c))
                                                       (⇒ a (∨ (¬ b) c)))
                                                    (= (⇒ a (∨ (¬ b) c))
@@ -168,18 +94,12 @@
       (= (∨ (¬ a) (∨ (¬ b) c))
          (⇒ a (⇒ b c))))         : eval
 
-   ($type (∨ (¬ a) (¬ b))) : (law ∨-use-type)
-   ($type (∨ (∨ (¬ a) (¬ b)) c)) : (law ∨-use-type)
-
    (⇒ (∧ (= (∨ (∨ (¬ a) (¬ b)) c)
             (∨ (¬ a) (∨ (¬ b) c)))
          (= (∨ (¬ a) (∨ (¬ b) c))
             (⇒ a (⇒ b c))))
       (= (∨ (∨ (¬ a) (¬ b)) c)
          (⇒ a (⇒ b c))))           : (law eq-trans)
-
-   ($type (= (∨ (∨ (¬ a) (¬ b)) c)
-             (⇒ a (⇒ b c))))       : (law =-use-type)
 
    (= (∨ (∨ (¬ a) (¬ b)) c)
       (⇒ a (⇒ b c)))        : (consistency '(⇒ (∧ (= (∨ (∨ (¬ a) (¬ b)) c)
@@ -189,13 +109,11 @@
                                                (= (∨ (∨ (¬ a) (¬ b)) c)
                                                   (⇒ a (⇒ b c)))))
 
+
    (∧ (= (∨ (¬ (∧ a b)) c)
          (∨ (∨ (¬ a) (¬ b)) c))
       (= (∨ (∨ (¬ a) (¬ b)) c)
          (⇒ a (⇒ b c))))        : eval
-
-   ($type (¬ (∧ a b))) : (law ¬-use-type)
-   ($type (∨ (¬ (∧ a b)) c)) : (law ∨-use-type)
 
    (⇒ (∧ (= (∨ (¬ (∧ a b)) c)
             (∨ (∨ (¬ a) (¬ b)) c))
@@ -203,9 +121,6 @@
             (⇒ a (⇒ b c))))
       (= (∨ (¬ (∧ a b)) c)
          (⇒ a (⇒ b c))))           : (law eq-trans)
-
-   ($type (= (∨ (¬ (∧ a b)) c)
-             (⇒ a (⇒ b c))))   : (law =-use-type)
 
    (= (∨ (¬ (∧ a b)) c)
       (⇒ a (⇒ b c)))    : (consistency '(⇒ (∧ (= (∨ (¬ (∧ a b)) c)
@@ -215,12 +130,11 @@
                                            (= (∨ (¬ (∧ a b)) c)
                                               (⇒ a (⇒ b c)))))
 
+
    (∧ (= (⇒ (∧ a b) c)
          (∨ (¬ (∧ a b)) c))
       (= (∨ (¬ (∧ a b)) c)
          (⇒ a (⇒ b c))))    : eval
-
-   ($type (⇒ (∧ a b) c)) : (law ⇒-use-type)
 
    (⇒ (∧ (= (⇒ (∧ a b) c)
             (∨ (¬ (∧ a b)) c))
@@ -229,33 +143,13 @@
       (= (⇒ (∧ a b) c)
          (⇒ a (⇒ b c))))       : (law eq-trans)
 
-   ($type (= (⇒ (∧ a b) c)
-             (⇒ a (⇒ b c)))) : (law =-use-type)
-
    ; TODO: Why is this taking so long?
-   (term-equal? '(⇒ (∧ (= (⇒ (∧ a b) c)
-                          (∨ (¬ (∧ a b)) c))
-                       (= (∨ (¬ (∧ a b)) c)
-                          (⇒ a (⇒ b c))))
-                    (= (⇒ (∧ a b) c)
-                       (⇒ a (⇒ b c))))
-                '(⇒ (∧ (= (⇒ (∧ a b) c)
-                          (∨ (¬ (∧ a b)) c))
-                       (= (∨ (¬ (∧ a b)) c)
-                          (⇒ a (⇒ b c))))
-                    (= (⇒ (∧ a b) c)
-                       (⇒ a (⇒ b c)))))       : eval
-
-   ; TODO: Why is this taking so long?
-#;
-   ((= (⇒ (∧ a b) c)
-       (⇒ a (⇒ b c)))  : (consistency '(⇒ (∧ (= (⇒ (∧ a b) c)
-                                                (∨ (¬ (∧ a b)) c))
-                                             (= (∨ (¬ (∧ a b)) c)
-                                                (⇒ a (⇒ b c))))
-                                          (= (⇒ (∧ a b) c)
-                                             (⇒ a (⇒ b c)))))
-
-       (here?) : here?)
+   (= (⇒ (∧ a b) c)
+      (⇒ a (⇒ b c)))  : (consistency '(⇒ (∧ (= (⇒ (∧ a b) c)
+                                               (∨ (¬ (∧ a b)) c))
+                                            (= (∨ (¬ (∧ a b)) c)
+                                               (⇒ a (⇒ b c))))
+                                         (= (⇒ (∧ a b) c)
+                                            (⇒ a (⇒ b c)))))
 
   ))

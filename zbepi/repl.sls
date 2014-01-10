@@ -16,6 +16,10 @@
     (only (xitomatl exceptions) print-exception))
 
 
+  (define $let (eval '$let standard-env))
+  (define get-current-environment (eval 'get-current-environment standard-env))
+
+
   (define repl
     (case-lambda
       (()
@@ -23,8 +27,8 @@
       ((env)
        (call/cc
          (lambda (exit)
-           (let loop ((env (eval `($let (($define ,$define))
-                                    (get-current-environment))
+           (let loop ((env (eval `(,$let (($define ,$define))
+                                    (,get-current-environment))
                                  env)))
              (display "z> ")
              (loop
