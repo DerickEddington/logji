@@ -1,0 +1,155 @@
+
+  (define (env-binding env sym-or-term)
+
+    (define (sym-ref alist sym)
+      (assq sym alist))
+
+    (define (term-ref pair-path-possibs term)
+      (let ((t-env (term-env term)))
+
+        (define (binding expr env)
+          (cond ((pair? expr) (env-binding env (make-term expr env)))
+                ((symbol? expr) (env-binding env expr))
+                (else (make-binding #F expr))))
+
+        (define (compare p o vars)
+          (cond
+            ((value? p)
+             (let ((b (binding o t-env)))
+               (and b
+                    (eqv? (value-value p) (binding-val b))
+                    vars)))
+            ((variable? p)
+             (cond
+               ((assq p vars) => (lambda (a)
+                                   (and (equal? o (cdr a))
+                                        vars)))
+               (else
+                (let ((vty (variable-type p))
+                      (oty (eval `(,$type ,o) t-env)))
+                  (and (eval `((,$vau (oty vty) #F
+                                 (,includes? oty vty))
+                               ,oty ,vty)
+                             t-env)
+                       (cons (cons p o) vars))))))
+            ((symbol? p)
+             (and (eq? p o)
+                  (not (binding o t-env))
+                  vars))
+            (else
+             (and (equal? p o)
+                  vars))))
+
+        (let recur ((obj (term-expr term))
+                    (ps pair-path-possibs)
+                    (vars '()))
+          (and (pair? ps)
+               (let ((p (car ps)))
+                 (cond ((and (pair? p) (pair? obj)
+                             (compare (car p) (car obj) vars))
+                        => (lambda (v) (recur (cdr obj) (cdr p) v)))
+                       ((and (end? p)
+                             (compare (end-possib p) obj vars))
+                        (end-binding p))
+                       (else
+                        (recur obj (cdr ps) vars))))))))
+
+    (if (symbol? sym-or-term)
+      (sym-ref (environment-symbol-bindings env) sym-or-term)
+      (term-ref (environment-term-bindings env) sym-or-term)))
+
+
+  (define (bind env sym-or-term val)
+
+    (define (sym-bind alist sym val)
+      (cons (cons sym val) alist))
+
+    (define (term-bind pair-path-possibs term val)
+      ;TODO: Functional update of pair-path-possibs tree structure
+      (let ((t-env (term-env term)))
+
+        (define (binding expr env)
+          (cond ((pair? expr) (env-binding env (make-term expr env)))
+                ((symbol? expr) (env-binding env expr))
+                (else (make-binding #F expr))))
+
+        (define (compare p o vars)
+          (cond
+            ((value? p)
+             (let ((b (binding o t-env)))
+               (and b
+                    (eqv? (value-value p) (binding-val b))
+                    vars)))
+            ((variable? p)
+             (cond
+               ((assq p vars) => (lambda (a)
+                                   (and (equal? o (cdr a))
+                                        vars)))
+               (else
+                (let ((vty (variable-type p))
+                      (oty (eval `(,$type ,o) t-env)))
+                  (and (eval `((,$vau (oty vty) #F
+                                 (,includes? oty vty))
+                               ,oty ,vty)
+                             t-env)
+                       (cons (cons p o) vars))))))
+            ((symbol? p)
+             (and (eq? p o)
+                  (not (binding o t-env))
+                  vars))
+            (else
+             (and (equal? p o)
+                  vars))))
+
+        (let recur ((obj (term-expr term))
+                    (ps pair-path-possibs)
+                    (vars '()))
+          (if (pair? ps)
+            (let ((p (car ps)))
+              (cond ((and (pair? p) (pair? obj)
+                          (compare (car p) (car obj) vars))
+                     => (lambda (v)
+                          (let ((x (recur (cdr obj) (cdr p) v)))
+                            (if x
+                              (cons (cons (car p) x)
+                                    (cdr ps))
+                              ???))))
+                    ((and (end? p)
+                          (compare (end-possib p) obj vars))
+                     (cons (make-end (end-possib p)
+                                     (make-binding term val))
+                           (cdr ps)))
+                    (else
+                     (let ((x (recur obj (cdr ps) vars)))
+                       (if x
+                         (cons p x)
+                         ???)))))
+            (list
+             (cond
+               ((pair? obj)
+                (let ((oa (car obj)))
+                  (cond (()))))
+               ))))))
+
+    (if (symbol? sym-or-term)
+      (make-environment
+        (sym-bind (environment-symbol-bindings env) sym-or-term val)
+        (environment-term-bindings env))
+      (make-environment
+        (environment-symbol-bindings env)
+        (term-bind (environment-term-bindings env) sym-or-term val))))
+
+
+
+($let ((a ($lambda ...))
+       (b ...))
+  ($let (('(a b c) ...))
+    (get-current-environment)))
+=>
+
+[env symbols: ((a . ,A) (b . ,B))
+     terms:
+     (([val ,A] . (([val ,B] . ((c . ([end () ,VAL]))))
+                   ...))
+      ...)
+     ]

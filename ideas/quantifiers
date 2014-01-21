@@ -1,0 +1,19 @@
+($define null "the empty bunch")
+($define pred "all predicates")
+($define elem "all elements (non bunches)")
+($define p (var pred))
+($define e (var elem))
+($define t1 (var anything))
+($define t2 (var anything))
+
+($define '(∀ null p) #T)
+($define '(= (∀ e p) (p e)) #T)
+($define '(= (∀ (∪ t1 t2) p)
+             (∧ (∀ t1 p)
+                (∀ t2 p)))
+  #T)
+
+
+
+($define b (var boolean))
+($define '(is? pred ($lambda (x) b)) #T)
