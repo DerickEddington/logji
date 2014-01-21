@@ -15,17 +15,6 @@
 
   (define (unimpl who . irts) (apply error who "unimplemented" irts))
 
-  (define (permute l)
-    (cond ((null? l)
-           '())
-          ((null? (cdr l))
-           (map list (car l)))
-          (else
-           (let ((p (permute (cdr l))))
-             (apply append (map (lambda (a)
-                                  (map (lambda (r) (cons a r))
-                                       p))
-                                (car l)))))))
 
   (define $vau         (eval '$vau         standard-env))
   (define $quote       (eval 'quote        standard-env))
@@ -129,41 +118,67 @@
 
        (define (err m i) (error 'consistency m i))
 
+       (define (permute expr possibs)
+         (define (vals-next)
+           (cdr (assoc (car expr) possibs)))
+         (cond
+           ((null? expr)
+            '())
+           ((null? (cdr expr))
+            (map list (vals-next)))
+           (else
+            (apply append (map (lambda (val)
+                                 (map (lambda (r) (cons val r))
+                                      (permute (cdr expr)
+                                               (cons (cons (car expr)
+                                                           (list val))
+                                                     possibs))))
+                               (vals-next))))))
+
        (let* ((e-expr (term-expr enclosing-term))
               (e-env (term-env enclosing-term))
-              ; TODO: This was taking too long, seemingly exponential!
               (e-val (binding-val
                       (or (lookup e-env enclosing-term)
                           (err "unknown value for enclosing term" e-expr))))
               (e-optr (car e-expr))
               (e-opnd (cdr e-expr)))
 
-         (define (possib-vals expr)
+         (define (possib-vals expr possibs)
            (define (binding)
              (cond ((pair? expr) (lookup e-env (make-term expr e-env)))
                    ((symbol? expr) (lookup e-env expr))
                    (else (make-binding #F expr))))
-           (let ((b (binding)))
-             (if b
-               (cons (list (binding-val b))
-                     #F)
-               (cons (eval `(,type-values (,$type ,expr))
-                           e-env)
-                     (if (symbol? expr)
-                       expr
-                       (make-term expr e-env))))))
+           (define (add vals)
+             (cons (cons expr vals) possibs))
+           (cond
+             ((assoc expr possibs)
+              (values possibs #F))
+             ((binding)
+              => (lambda (b)
+                   (values (add (list (binding-val b)))
+                           #F)))
+             (else
+              (values (add (eval `(,type-values (,$type ,expr))
+                                 e-env))
+                      (if (symbol? expr) expr (make-term expr e-env))))))
 
-         (let* ((optr-pv/t (possib-vals e-optr))
-                (optr-pv (car optr-pv/t))
-                (optr-t  (cdr optr-pv/t)))
+         (unless (list? e-opnd) (err "invalid" e-expr))
 
-           (if (for-all applicative? optr-pv)
+         (let-values (((possibs optr-t) (possib-vals e-optr '())))
 
-             (let* ((opnd-pv/t (map possib-vals e-opnd))
-                    (opnd-pv (map car opnd-pv/t))
-                    (opnd-t  (map cdr opnd-pv/t))
+           (if (for-all applicative? (cdr (assoc e-optr possibs)))
+
+             (let* ((opnd-pv/t
+                     (fold-right (lambda (x a)
+                                   (let-values (((pv t) (possib-vals x (car a))))
+                                     (cons pv (cons t (cdr a)))))
+                                 (cons possibs '())
+                                 e-opnd))
+                    (possibs (car opnd-pv/t))
+                    (opnd-t  (cdr opnd-pv/t))
                     (unbound-terms (cons optr-t opnd-t))
-                    (vals-possibs (permute (cons optr-pv opnd-pv)))
+                    (vals-possibs
+                     (permute e-expr possibs))
                     (e-val-possibs
                      (let ((params (do ((n (length e-expr) (- n 1))
                                         (a '() (cons (string->symbol
