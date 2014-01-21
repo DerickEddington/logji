@@ -39,18 +39,20 @@
     (let ((calculate
            (lambda (expr : method rest env)
              (define (err m i) (error '$calculate m i))
+             (unless (or (pair? expr) (symbol? expr))
+               (err "invalid expression" expr))
              (if (eq? ': :)
-               (let ((val (eval `(,(applicative-underlying (eval method env))
-                                  ,expr ,env)
-                                empty-env))
-                     (p (if (pair? expr)
-                          (make-term expr env)
-                          expr)))
+               (let* ((val (eval `(,(applicative-underlying (eval method env))
+                                   ,expr ,env)
+                                 empty-env))
+                      (env (bind env
+                                 (if (pair? expr)
+                                   (make-term expr env)
+                                   expr)
+                                 val)))
                  (if (null? rest)
                    env
-                   (eval `((,$vau ,p #F
-                             (,$calculate . ,rest))
-                           . ,val)
+                   (eval `(,$calculate . ,rest)
                          env)))
                (err "invalid syntax" :)))))
 

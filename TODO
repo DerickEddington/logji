@@ -1,0 +1,3 @@
+Look into using bind instead of (eval `({$vau,$lambda,$let} ...) for
+implementation-level needs.  This will avoid unneeded term lookup attempts as
+well as rely on less other code.

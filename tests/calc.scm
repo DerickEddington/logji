@@ -28,6 +28,7 @@
 
 ($define '(∧ ⊤ ⊤) #T)
 ($define '(⇒ ⊤ ⊤) #T)
+($define '(⇒ ⊤ ⊥) #F)
 
 ($define-law mat-impl
   (= (⇒ x y) (∨ (¬ x) y))
@@ -36,7 +37,6 @@
   (= (¬ (∧ x y)) (∨ (¬ x) (¬ y))))
 ($define-law disj-assoc
   (= (∨ (∨ x y) z) (∨ x (∨ y z))))
-;($define-law eq-symm    (= (= x y) (= y x))
 ($define-law eq-trans
   (⇒ (∧ (= x y) (= y z)) (= x z)))
 
@@ -47,6 +47,8 @@
 ($let ((a (var boolean))
        (b (var boolean))
        (c (var boolean)))
+  ($let
+      ((portation
 
   ($calculate
 
@@ -66,11 +68,6 @@
       (⇒ a (⇒ b c)))         : (transparency 2 (law mat-impl))
 
 
-   (∧ (= (∨ (¬ a) (∨ (¬ b) c))
-         (⇒ a (∨ (¬ b) c)))
-      (= (⇒ a (∨ (¬ b) c))
-         (⇒ a (⇒ b c))))        : eval
-
    (⇒ (∧ (= (∨ (¬ a) (∨ (¬ b) c))
             (⇒ a (∨ (¬ b) c)))
          (= (⇒ a (∨ (¬ b) c))
@@ -78,10 +75,7 @@
       (= (∨ (¬ a) (∨ (¬ b) c))
          (⇒ a (⇒ b c))))           : (law eq-trans)
 
-
-   (= (∨ (¬ a) (∨ (¬ b) c))    ; This is failing because (∧ ⊤ ⊤) is also bound,
-                               ; This is a flaw of the environment term-bindings
-                               ; design.
+   (= (∨ (¬ a) (∨ (¬ b) c))
       (⇒ a (⇒ b c)))         : (consistency '(⇒ (∧ (= (∨ (¬ a) (∨ (¬ b) c))
                                                       (⇒ a (∨ (¬ b) c)))
                                                    (= (⇒ a (∨ (¬ b) c))
@@ -89,10 +83,6 @@
                                                 (= (∨ (¬ a) (∨ (¬ b) c))
                                                    (⇒ a (⇒ b c)))))
 
-   (∧ (= (∨ (∨ (¬ a) (¬ b)) c)
-         (∨ (¬ a) (∨ (¬ b) c)))
-      (= (∨ (¬ a) (∨ (¬ b) c))
-         (⇒ a (⇒ b c))))         : eval
 
    (⇒ (∧ (= (∨ (∨ (¬ a) (¬ b)) c)
             (∨ (¬ a) (∨ (¬ b) c)))
@@ -110,11 +100,6 @@
                                                   (⇒ a (⇒ b c)))))
 
 
-   (∧ (= (∨ (¬ (∧ a b)) c)
-         (∨ (∨ (¬ a) (¬ b)) c))
-      (= (∨ (∨ (¬ a) (¬ b)) c)
-         (⇒ a (⇒ b c))))        : eval
-
    (⇒ (∧ (= (∨ (¬ (∧ a b)) c)
             (∨ (∨ (¬ a) (¬ b)) c))
          (= (∨ (∨ (¬ a) (¬ b)) c)
@@ -131,11 +116,6 @@
                                               (⇒ a (⇒ b c)))))
 
 
-   (∧ (= (⇒ (∧ a b) c)
-         (∨ (¬ (∧ a b)) c))
-      (= (∨ (¬ (∧ a b)) c)
-         (⇒ a (⇒ b c))))    : eval
-
    (⇒ (∧ (= (⇒ (∧ a b) c)
             (∨ (¬ (∧ a b)) c))
          (= (∨ (¬ (∧ a b)) c)
@@ -143,7 +123,6 @@
       (= (⇒ (∧ a b) c)
          (⇒ a (⇒ b c))))       : (law eq-trans)
 
-   ; TODO: Why is this taking so long?
    (= (⇒ (∧ a b) c)
       (⇒ a (⇒ b c)))  : (consistency '(⇒ (∧ (= (⇒ (∧ a b) c)
                                                (∨ (¬ (∧ a b)) c))
@@ -151,5 +130,8 @@
                                                (⇒ a (⇒ b c))))
                                          (= (⇒ (∧ a b) c)
                                             (⇒ a (⇒ b c)))))
+   )))
 
-  ))
+    (lookup portation
+            '(= (⇒ (∧ #T #F) #T)
+                (⇒ #T (⇒ #F #T))))))

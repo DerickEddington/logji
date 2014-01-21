@@ -2,13 +2,6 @@
 ;; Copyright 2014 Derick Eddington.  My MIT-style license is in the file named
 ;; LICENSE from the original collection this file is distributed with.
 
-; TODO: The term-bindings design is seriously flawed because matching commits to
-; a path when its part matches, but if the match later fails the entire matching
-; fails even if there is another possibility at an outer level that would match
-; all the way.  The search must be able to back-track, but this seems at odds
-; with the purpose of the data structure (which is to restrict searching to
-; selected tree branches).
-
 (library (logji zbepi)
   (export
     term? make-term term-expr term-env
@@ -29,70 +22,6 @@
   (define (unimpl who . irts) (apply error who "unimplemented" irts))
 
 
-  ; <environment>     : [environment <symbol-bindings> <term-bindings>]
-  ; <symbol-bindings> : ([binding <symbol> <anything>] ...)
-  ; <term-bindings>   : <possibilities>
-  ; <possibilities>   : [possibs (<possibility> ... <possibility*> ? )]
-  ; <possibility>     : (<pattern> . <possibilities>)
-  ;                   | [end <pattern> [binding <term> <anything>] #F]
-  ; <pattern>         : [value <value>]
-  ;                   | [variable <type>]
-  ;                   | [ignore]
-  ;                   | <literal>
-  ; <value>           : <anything> except variable or ignore
-  ; <type>            : <anything>
-  ; <literal>         : <anything> except pair
-  ; <possibility*>    | (<possibilities*> . #F)
-  ; <possibilities*>  : [possibs ((<pattern> . <possibilities**>) ...
-  ;                               <possibility*> ? )]
-  ; <possibilities**> : [possibs (<possibility**> ... <possibility*> ? )]
-  ; <possibility**>   : (<pattern> . <possibilities**>)
-  ;                   | [end <pattern> #F <possibilities**>]
-  ;                   | [end <pattern> #F <possibilities>]
-  ;
-  ; Examples: TODO: Still valid?
-  ; Environment with one term (a b):
-  ; term-bindings =
-  ; [possibs ((a* . [possibs ((b* . [possibs ([end ()
-  ;                                                [binding [term (a b) <env>]
-  ;                                                         <anything>]
-  ;                                                #F])]))]))]
-  ; Environment with one term ((a) b):
-  ; term-bindings =
-  ; [possibs (([possibs ((a*
-  ;             . [possibs ([end ()
-  ;                              #F
-  ;                              [possibs ((b*
-  ;                               . [possibs ([end ()
-  ;                                                [binding [term ((a) b) <env>]
-  ;                                                         <anything>]
-  ;                                                #F])]))]])]))]
-  ;            . #F))]
-  ;
-  ; Environment with four terms (a) (a b) ((a) b) ((a b) c):
-  ; term-bindings =
-  ; [possibs
-  ;  ((a* . [possibs
-  ;          ([end () [binding [term (a) <env>] <anything>] #F]
-  ;           (b* . [possibs
-  ;                  ([end () [binding [term (a b) <env>] <anything>] #F])]))])
-  ;   ([possibs
-  ;     ((a* . [possibs
-  ;             ([end () #F [possibs
-  ;                          ((b* . [possibs
-  ;                                  ([end ()
-  ;                                        [binding [term ((a) b) <env>]
-  ;                                                 <anything>]
-  ;                                        #F])]))]]
-  ;              (b* . [possibs
-  ;                     ([end () #F [possibs
-  ;                                  ((c* . [possibs
-  ;                                          ([end ()
-  ;                                                [binding [term ((a b) c) <env>]
-  ;                                                         <anything>]
-  ;                                                #F])]))])]))]))]
-  ;    . #F))]
-
   (define-record-type environment
     (fields symbol-bindings term-bindings)
     ; This exists to prevent printing the giant contents of environments.
@@ -108,13 +37,11 @@
          (unless (pair? expr) (error 'make-term "not a pair" expr))
          (m expr env)))))
 
-  (define-record-type possibs (fields list)) ; private
-  (define-record-type end (fields pat binding cont-poss)) ; private
   (define-record-type value (fields val)) ; private
   (define-record-type variable (fields type))
   (define-record-type ignore)
 
-  (define empty-env (make-environment '() (make-possibs '())))
+  (define empty-env (make-environment '() '()))
 
 
   (define (bind env sym-or-term val)
@@ -122,13 +49,10 @@
     (define (sym-bind sb sym val)
       (cons (make-binding sym val) sb))
 
-    (define (term-bind possibilities term val)
+    (define (term-bind tb term val)
       (let ((t-env (term-env term)))
 
         (define (patternify o)
-          ; Initially using patternify on the entire term expression acheives
-          ; looking-up all the symbols, as required in all cases handled by
-          ; term-bind, only once.
           (cond
             ((pair? o)
              (cons (patternify (car o))
@@ -144,105 +68,9 @@
             (else ; o is literal or unbound symbol or null
              o)))
 
-        (define (compare p o vars)
-          (cond
-            ((value? p)
-             (and (value? o)
-                  (equal? (value-val p) (value-val o))
-                  vars))
-            ((variable? p)
-             (and (variable? o)
-                  (cond ((assq p vars) => (lambda (a)
-                                            (and (eq? (cdr a) o)
-                                                 vars)))
-                        (else
-                         (and (equal? (variable-type p) (variable-type o))
-                              (cons (cons p o) vars))))))
-            ((ignore? p)
-             (and (ignore? o)
-                  vars))
-            (else ; p is literal or unbound symbol or null
-             (and (equal? p o)
-                  vars))))
-
-        (let match ((ps (possibs-list possibilities))
-                    (obj (patternify (term-expr term)))
-                    (vars '())
-                    (ods '())
-                    (rps '()))
-          (if (pair? ps)
-            (let ((p (car ps)))
-              (define (update np)
-                (make-possibs (rappend rps (cons np (cdr ps)))))
-              (cond
-                ((and (pair? p)
-                      (pair? obj)
-                      (not (possibs? (car p)))
-                      (not (pair? (car obj)))
-                      (compare (car p) (car obj) vars))
-                 => (lambda (vars*)
-                      (update (cons (car p)
-                                    (match (possibs-list (cdr p))
-                                           (cdr obj)
-                                           vars*
-                                           ods
-                                           '())))))
-                ((and (pair? p)
-                      (pair? obj)
-                      (possibs? (car p))
-                      (pair? (car obj)))
-                 (assert (null? (cdr ps)))
-                 (update (cons (match (possibs-list (car p))
-                                      (car obj)
-                                      vars
-                                      (cons (cdr obj) ods)
-                                      '())
-                               #F)))
-                ((and (end? p)
-                      (not (pair? obj))
-                      (compare (end-pat p) obj vars))
-                 => (lambda (vars*)
-                      (let-values (((b* cps*)
-                                    (cond ((end-cont-poss p)
-                                           => (lambda (cps)
-                                                (values #F
-                                                        (match (possibs-list cps)
-                                                               (car ods)
-                                                               vars*
-                                                               (cdr ods)
-                                                               '()))))
-                                          (else
-                                           (values (make-binding term val)
-                                                   #F)))))
-                        (update (make-end (end-pat p) b* cps*)))))
-                (else
-                 (match (cdr ps) obj vars ods (cons p rps)))))
-
-            (let make ((obj obj) (ods ods) (rps rps))
-              (make-possibs
-               (cond ((and (pair? obj)
-                           (pair? (car obj)))
-                      ; This form of pattern must be after all others at this
-                      ; level, to ensure that all patterns which are for pairs
-                      ; without pair cars are tried before committing to the
-                      ; pattern which is for pairs with pair cars.  Otherwise,
-                      ; because of how lookup is implemented, lookup could
-                      ; commit to testing a pattern which is for pairs with pair
-                      ; cars and if that fails none of the other patterns will
-                      ; be tried even though one of them might match.
-                      (rappend rps
-                               (list
-                                (cons (make (car obj) (cons (cdr obj) ods) '())
-                                      #F))))
-                     ((pair? obj)
-                      (cons (cons (car obj)
-                                  (make (cdr obj) ods '()))
-                            (reverse rps)))
-                     (else
-                      (cons (if (pair? ods)
-                              (make-end obj #F (make (car ods) (cdr ods) '()))
-                              (make-end obj (make-binding term val) #F))
-                            (reverse rps))))))))))
+        (cons (make-binding (patternify (term-expr term))
+                            val)
+              tb)))
 
     (if (symbol? sym-or-term)
       (make-environment
@@ -262,36 +90,32 @@
       (find (lambda (b) (eq? sym (binding-ident b)))
             sb))
 
-    (define (term-ref possibilities term)
-      (let ((t-env (term-env term)))
+    (define (term-ref tb term)
+      (let ((t-expr (term-expr term))
+            (t-env (term-env term)))
 
-        (define (compare p o vars cache)
+        (define (match p x cached vars)
 
-          (define (cached-fields o)
-            (values o
-                    (cached-obj    o)
-                    (cached-tried? o)
-                    (cached-val?   o)
-                    (cached-val    o)
-                    (cached-type?  o)
-                    (cached-type   o)))
+          (define (cached-fields c)
+            (values (cached-obj    c)
+                    (cached-tried? c)
+                    (cached-val?   c)
+                    (cached-val    c)
+                    (cached-type?  c)
+                    (cached-type   c)))
 
-          (let-values (((o x tried? val? val type? type)
-                        (cond ((cached? o)
-                               (cached-fields o))
-                              ((assoc o cache)
-                               => (lambda (a) (cached-fields (cdr a))))
-                              (else
-                               (values o o #F #F #F #F #F)))))
+          (let-values (((xc tried? val? val type? type)
+                        (if (cached? cached)
+                          (cached-fields cached)
+                          (values x #F #F #F #F #F))))
 
-            (define (yes) (values #T o vars cache))
-            (define (no) (values #F o vars cache))
-            (define (yes* o* vars* cache*) (values #T o* vars* cache*))
-            (define (no* o* vars* cache*) (values #F o* vars* cache*))
+            (define (yes) (values #T cached vars))
+            (define (no) (values #F cached vars))
+            (define (yes* cached* vars*) (values #T cached* vars*))
+            (define (no* cached* vars*) (values #F cached* vars*))
 
-            (define (cache-x tried? val? val type? type)
-              (let ((o* (make-cached x tried? val? val type? type)))
-                (values o* (cons (cons x o*) cache))))
+            (define (cache tried? val? val type? type)
+              (make-cached xc tried? val? val type? type))
 
             (define (do-val tproc bproc eproc)
               (cond (tried?
@@ -299,17 +123,44 @@
                     ((lookup t-env (if (pair? x) (make-term x t-env) x))
                      => (lambda (b)
                           (let ((v (binding-val b)))
-                            (let-values (((o* cache*)
-                                          (cache-x #T #T v type? type)))
+                            (let ((c* (cache #T #T v type? type)))
                               (if (bproc v)
-                                (yes* o* vars cache*)
-                                (no* o* vars cache*))))))
+                                (yes* c* vars)
+                                (no* c* vars))))))
                     (else
-                     (let-values (((o* cache*)
-                                   (cache-x #T #F #F type? type)))
-                       (eproc o* vars cache*)))))
+                     (let ((c* (cache #T #F #F type? type)))
+                       (eproc c* vars)))))
 
             (cond
+              ((pair? p)
+               (if (pair? x)
+                 (let ()
+                   (define (cached-part f)
+                     (and (cached? cached)
+                          (let ((o (f xc)))
+                            (and (cached? o)
+                                 o))))
+                   (define (update-cached ca* cd*)
+                     (if (or (cached? ca*) (cached? cd*))
+                       (make-cached (cons (if (cached? ca*) ca* (car xc))
+                                          (if (cached? cd*) cd* (cdr xc)))
+                                    tried? val? val type? type)
+                       cached))
+                   (let-values (((? ca* vars*) (match (car p)
+                                                      (car x)
+                                                      (cached-part car)
+                                                      vars)))
+                     (if ?
+                       (let-values (((? cd* vars*) (match (cdr p)
+                                                          (cdr x)
+                                                          (cached-part cdr)
+                                                          vars*)))
+                         (if ?
+                           (yes* (update-cached ca* cd*) vars*)
+                           (no*  (update-cached ca* cd*) vars)))
+                       (no* (update-cached ca* #F) vars))))
+                 (no)))
+
               ((value? p)
                (cond ((or (pair? x) (symbol? x))
                       (do-val (lambda () (and val? (equal? (value-val p) val)))
@@ -317,7 +168,8 @@
                               no*))
                      ((equal? (value-val p) x)
                       (yes))
-                     (else (no))))
+                     (else
+                      (no))))
 
               ((variable? p)
                (cond
@@ -328,40 +180,47 @@
 
                  ((and (symbol? x)
                        (not tried?))
-                  (let-values (((? o* _ cache*)
+                  (let-values (((? c* _)
                                 (do-val (lambda () (assert #F))
                                         (lambda (bv) #T)
                                         no*)))
                     (if ?
-                      (compare p o* vars cache*)
-                      (no* o* vars cache*))))
+                      (match p x c* vars)
+                      (no* c* vars))))
 
                  ((or (not (symbol? x))
                       val?)
-                  (let-values (((oty o* cache*)
-                                (cond
-                                  (type?
-                                   (values type o cache))
-                                  ((and (symbol? x)
-                                        (variable? val))
-                                   (values (variable-type val) o cache))
-                                  ((variable? x)
-                                   (values (variable-type x) o cache))
-                                  (val?
-                                   (values val o cache))
-                                  (else
-                                   (let ((oty (eval `(,$type ,x) t-env)))
-                                     (let-values
-                                         (((o* cache*)
-                                           (cache-x tried? val? val #T oty)))
-                                       (values oty o* cache*)))))))
-                    (if (eval `((,$vau (vty oty) #F
-                                  (,is? vty oty))
-                                ,(variable-type p)
-                                ,oty)
-                              t-env)
-                      (yes* o* (cons (cons p x) vars) cache*)
-                      (no* o* vars cache*))))
+                  (let ((pty (variable-type p)))
+                    (define (check xty)
+                      (eval `((,$vau (pty xty) #F
+                                (,is? pty xty))
+                              ,pty ,xty)
+                            t-env))
+                    (define (check* xty)
+                      (if (check xty)
+                        (yes-v)
+                        (no)))
+                    (define (yes-c-v c*)
+                      (yes* c* (cons (cons p x) vars)))
+                    (define (yes-v)
+                      (yes-c-v cached))
+                    (cond
+                      (type?
+                       (check* type))
+                      ((and (symbol? x)
+                            (variable? val))
+                       (check* (variable-type val)))
+                      ((variable? x)
+                       (check* (variable-type x)))
+                      ((and val?
+                            (check val))
+                       (yes-v))
+                      (else
+                       (let* ((xty (eval `(,$type ,x) t-env))
+                              (c* (cache tried? val? val #T xty)))
+                         (if (check xty)
+                           (yes-c-v c*)
+                           (no* c* vars)))))))
 
                  (else ; x is unbound symbol
                   (no))))
@@ -378,62 +237,17 @@
                    (yes))
                  (no))))))
 
-        (let match ((ps (possibs-list possibilities))
-                    (o (term-expr term))
-                    (vars '())
-                    (ods '())
-                    (cache '()))
-          (define (uncache a) (if (cached? a) (cached-obj a) a))
-          (and (pair? ps)
-               (let ((p (car ps))
-                     (x (uncache o)))
-                 (define (next o* cache*)
-                   (match (cdr ps) o* vars ods cache*))
-                 (cond
-                   ((and (pair? p)
-                         (pair? x)
-                         (not (possibs? (car p))))
-                    (let-values (((? oa* vars* cache*)
-                                  (compare (car p) (car x) vars cache)))
-                      (if ?
-                        (match (possibs-list (cdr p))
-                               (cdr x)
-                               vars*
-                               ods
-                               cache*)
-                        (next (cons oa* (cdr x)) ; This necessitates uncache
-                              cache*))))
-                   ((and (pair? p)
-                         (pair? x)
-                         (possibs? (car p))
-                         (pair? (uncache (car x))))
-                    (match (possibs-list (car p))
-                           (car x)
-                           vars
-                           (cons (cdr x) ods)
-                           cache))
-                   ((end? p)
-                    (let-values (((? o* vars* cache*)
-                                  (compare (end-pat p)
-                                           (if (and (pair? x)
-                                                    (not (cached? o)))
-                                             (cons (uncache (car x))
-                                                   (cdr x))
-                                             o)
-                                           vars
-                                           cache)))
-                      (if ?
-                        (cond ((end-cont-poss p)
-                               => (lambda (cps)
-                                    (match (possibs-list cps)
-                                           (car ods)
-                                           vars*
-                                           (cdr ods)
-                                           cache*)))
-                              (else (end-binding p)))
-                        (next o* cache*))))
-                   (else
-                    (next o cache))))))))
+        (let next ((tb tb)
+                   (cached #F))
+          (and (pair? tb)
+               (let-values (((? cached* _)
+                             (match (binding-ident (car tb))
+                                    t-expr
+                                    cached
+                                    '())))
+                 (if ?
+                   (car tb)
+                   (next (cdr tb) cached*)))))))
 
     (if (symbol? sym-or-term)
       (sym-ref (environment-symbol-bindings env) sym-or-term)
@@ -630,10 +444,7 @@
        (null?  . ,(procedure->applicative null?))
        (pair?  . ,(procedure->applicative pair?))
 
-       (= . ,(procedure->applicative
-              (lambda (a b)
-                (or (equal? a b)
-                    (unimpl '= a b)))))
+       (= . ,(procedure->applicative equal?))
        )))
 
 
@@ -718,7 +529,6 @@
        (lookup        . ,(procedure->applicative lookup))
        (binding-ident . ,(procedure->applicative binding-ident))
        (binding-val   . ,(procedure->applicative binding-val))
-       (make-binding  . ,(procedure->applicative make-binding))
        )))
 
 )
