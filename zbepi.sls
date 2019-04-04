@@ -1,7 +1,4 @@
 #!r6rs
-;; Copyright 2014 Derick Eddington.  My MIT-style license is in the file named
-;; LICENSE from the original collection this file is distributed with.
-
 (library (logji zbepi)
   (export
     term? make-term term-expr term-env
